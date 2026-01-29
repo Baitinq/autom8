@@ -1,6 +1,6 @@
 # autom8
 
-A CLI tool to automate AI agent workflows. Define tasks with prompts and verification criteria, then let AI implement them.
+A CLI tool to automate AI agent workflows. Define tasks with prompts and verification criteria, then let AI implement them in parallel git worktrees.
 
 ## Installation
 
@@ -22,52 +22,49 @@ go build -o autom8 ./src
 
 ### Create a task
 
-**Interactive mode:**
 ```bash
+# Interactive mode
 autom8 feature
-```
 
-**Non-interactive mode:**
-```bash
-autom8 feature -p "Add user authentication" -c "Login endpoint works" -c "Passwords are hashed" -c "JWT tokens are valid"
+# Non-interactive mode
+autom8 feature -p "Add user authentication" -c "Login endpoint works" -c "Passwords are hashed"
+
+# With dependency on another task
+autom8 feature -p "Add logout button" -d task-1234567890
 ```
 
 ### List tasks
 
 ```bash
+autom8 list
+```
+
+### Implement tasks
+
+```bash
+# Implement all pending tasks (one worktree each)
 autom8 implement
+
+# Run 3 parallel instances per task
+autom8 implement -n 3
 ```
 
-Output:
-```
-Found 2 task(s):
+Each task gets its own git worktree in `.autom8/worktrees/`. Tasks with dependencies branch from their dependency's branch.
 
-1. [pending] Add user authentication
-   ID: task-1234567890
-   Created: 2026-01-29 15:30:00
-   Verification criteria:
-     - Login endpoint works
-     - Passwords are hashed
-     - JWT tokens are valid
-
-2. [pending] Create REST API for products
-   ID: task-0987654321
-   Created: 2026-01-29 16:00:00
-```
+With `-n 3`, you get exponential branching:
+- 2 independent tasks = 6 worktrees
+- 1 dependent task = 9 worktrees (3 instances per each of 3 parent instances)
 
 ## How it works
 
-1. **Define** - Use `autom8 feature` to create a task with a prompt and verification criteria
-2. **Store** - Tasks are saved to `~/.autom8/tasks.json`
-3. **Implement** - (Coming soon) AI agents will implement tasks and verify against your criteria
+1. **Define** - Use `autom8 feature` to create tasks with prompts, verification criteria, and dependencies
+2. **Store** - Tasks are saved to `.autom8/tasks.json` (committed to repo)
+3. **Implement** - `autom8 implement` creates git worktrees and runs Claude CLI in each
 
-## Roadmap
+## Data Storage
 
-- [ ] AI-powered implementation of tasks
-- [ ] Multiple AI backend support (Claude, GPT, local models)
-- [ ] Task status management (pending, in_progress, completed)
-- [ ] Verification automation
-- [ ] Git integration for feature branches
+- `.autom8/tasks.json` - Task definitions (should be committed)
+- `.autom8/worktrees/` - Git worktrees for implementations (gitignored)
 
 ## License
 
