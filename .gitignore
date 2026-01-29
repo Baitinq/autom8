@@ -1,0 +1,10 @@
+# Binary
+autom8
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
