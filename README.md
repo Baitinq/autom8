@@ -15,7 +15,7 @@ direnv allow
 ### Build from source
 
 ```bash
-go build -o autom8 .
+go build -o autom8 ./src
 ```
 
 ## Usage
