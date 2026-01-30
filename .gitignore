@@ -11,3 +11,5 @@ autom8
 
 # OS
 .DS_Store
+
+.direnv/
