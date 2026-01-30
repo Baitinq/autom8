@@ -54,6 +54,8 @@ func main() {
 		runImplement()
 	case "list":
 		runList()
+	case "status":
+		runStatus()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printUsage()
@@ -86,6 +88,7 @@ func printUsage() {
 	fmt.Println("             -n <num>       Number of parallel instances per task (default: 1)")
 	fmt.Println("             Creates git worktrees in .autom8/worktrees/")
 	fmt.Println("             Dependent tasks branch from their dependency (exponential)")
+	fmt.Println("  status     Show status of active worktrees and implementations")
 	fmt.Println("  help       Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
@@ -318,6 +321,113 @@ func runList() {
 		}
 		fmt.Println()
 	}
+}
+
+func runStatus() {
+	autom8Path, err := getAutom8Dir()
+	if err != nil {
+		fmt.Printf("Error getting autom8 dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	worktreesDir := filepath.Join(autom8Path, "worktrees")
+
+	// Check if worktrees directory exists
+	if _, err := os.Stat(worktreesDir); os.IsNotExist(err) {
+		fmt.Println("No worktrees found. Use 'autom8 implement' to create implementations.")
+		return
+	}
+
+	// List all worktree directories
+	entries, err := os.ReadDir(worktreesDir)
+	if err != nil {
+		fmt.Printf("Error reading worktrees dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(entries) == 0 {
+		fmt.Println("No worktrees found. Use 'autom8 implement' to create implementations.")
+		return
+	}
+
+	fmt.Printf("Found %d worktree(s):\n\n", len(entries))
+
+	gitRoot, err := getGitRoot()
+	if err != nil {
+		fmt.Printf("Error getting git root: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		worktreeName := entry.Name()
+		worktreePath := filepath.Join(worktreesDir, worktreeName)
+
+		// Extract task ID from worktree name (remove suffix)
+		taskID := worktreeName
+		if idx := strings.LastIndex(worktreeName, "-"); idx > 0 {
+			// Keep the full name for display, but try to extract base task ID
+			baseTaskID := worktreeName[:strings.Index(worktreeName, "-")]
+			if strings.HasPrefix(baseTaskID, "task-") {
+				taskID = baseTaskID
+			}
+		}
+
+		// Check if there are any git changes
+		statusCmd := exec.Command("git", "-C", worktreePath, "status", "--porcelain")
+		statusOutput, err := statusCmd.Output()
+		hasChanges := err == nil && len(strings.TrimSpace(string(statusOutput))) > 0
+
+		// Check how many commits are ahead
+		aheadCmd := exec.Command("git", "-C", worktreePath, "rev-list", "--count", "HEAD", "^main")
+		aheadOutput, err := aheadCmd.Output()
+		commitsAhead := "0"
+		if err == nil {
+			commitsAhead = strings.TrimSpace(string(aheadOutput))
+		}
+
+		// Get the branch name
+		branchCmd := exec.Command("git", "-C", worktreePath, "branch", "--show-current")
+		branchOutput, err := branchCmd.Output()
+		branchName := "unknown"
+		if err == nil {
+			branchName = strings.TrimSpace(string(branchOutput))
+		}
+
+		// Check if there are any running processes in the worktree
+		// This is a simple check - look for claude processes
+		processCmd := exec.Command("pgrep", "-f", worktreePath)
+		_, err = processCmd.Output()
+		isRunning := err == nil
+
+		status := "idle"
+		if isRunning {
+			status = "running"
+		} else if hasChanges {
+			status = "modified"
+		} else if commitsAhead != "0" {
+			status = "committed"
+		}
+
+		fmt.Printf("📁 %s\n", worktreeName)
+		fmt.Printf("   Status: %s", status)
+		if isRunning {
+			fmt.Printf(" (AI working)")
+		}
+		fmt.Println()
+		fmt.Printf("   Branch: %s\n", branchName)
+		fmt.Printf("   Commits ahead: %s\n", commitsAhead)
+		if hasChanges {
+			fmt.Printf("   Uncommitted changes: yes\n")
+		}
+		fmt.Printf("   Path: %s\n", worktreePath)
+		fmt.Println()
+	}
+
+	fmt.Println("💡 Tip: cd into a worktree to see detailed changes with 'git status' and 'git log'")
 }
 
 func runImplement() {
