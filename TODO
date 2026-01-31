@@ -1,2 +1,6 @@
 1. memory.md
 2. (unrelated) review PR
+3. task name (llm summary)
+4. fully autonomous mode (does converge, auto accept, then next implement)
+5. test task dependencies
+6. maybe auto identify task dependencies no need for manual
