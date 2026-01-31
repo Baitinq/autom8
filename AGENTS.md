@@ -23,7 +23,6 @@ autom8/
 │       └── converger.md     # Prompt template for convergence agents
 ├── flake.nix                # Nix flake for dev environment & build
 ├── flake.lock               # Pinned Nix dependencies
-├── shell.nix                # Alternative Nix shell entry point
 ├── go.mod                   # Go module definition
 ├── README.md                # User documentation
 ├── TODO                     # Planned work items
