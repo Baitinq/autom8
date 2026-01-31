@@ -1,9 +1,10 @@
 # Binary
 /autom8
 
-# autom8 runtime directory (only tasks.json should be committed)
+# autom8 runtime directory (tasks.json and memory.md should be committed)
 .autom8/*
 !.autom8/tasks.json
+!.autom8/memory.md
 
 # Editor
 .idea/
