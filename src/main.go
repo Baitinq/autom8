@@ -1231,7 +1231,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Launch interactive Claude session with system prompt
-	claudeCmd := exec.Command("claude", "--system-prompt", systemPrompt)
+	claudeCmd := exec.Command("claude", "--dangerously-skip-permissions", "--system-prompt", systemPrompt)
 	claudeCmd.Dir = worktreePath
 	claudeCmd.Stdin = os.Stdin
 	claudeCmd.Stdout = os.Stdout
