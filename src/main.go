@@ -56,6 +56,10 @@ func main() {
 		runList()
 	case "status":
 		runStatus()
+	case "accept":
+		runAccept()
+	case "delete":
+		runDelete()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printUsage()
@@ -89,6 +93,10 @@ func printUsage() {
 	fmt.Println("             Creates git worktrees in .autom8/worktrees/")
 	fmt.Println("             Dependent tasks branch from their dependency (exponential)")
 	fmt.Println("  status     Show status of active worktrees and implementations")
+	fmt.Println("  accept     Merge a worktree branch into current branch and clean up")
+	fmt.Println("             <worktree>     Name of the worktree to accept")
+	fmt.Println("  delete     Delete a task by ID")
+	fmt.Println("             <task-id>      ID of the task to delete")
 	fmt.Println("  help       Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
@@ -96,6 +104,8 @@ func printUsage() {
 	fmt.Println("  autom8 feature -p \"Add logout\" -d task-123  # depends on task-123")
 	fmt.Println("  autom8 list")
 	fmt.Println("  autom8 implement")
+	fmt.Println("  autom8 accept task-123456-1")
+	fmt.Println("  autom8 delete task-123456789")
 }
 
 func getAutom8Dir() (string, error) {
@@ -352,12 +362,6 @@ func runStatus() {
 
 	fmt.Printf("Found %d worktree(s):\n\n", len(entries))
 
-	gitRoot, err := getGitRoot()
-	if err != nil {
-		fmt.Printf("Error getting git root: %v\n", err)
-		os.Exit(1)
-	}
-
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -365,16 +369,6 @@ func runStatus() {
 
 		worktreeName := entry.Name()
 		worktreePath := filepath.Join(worktreesDir, worktreeName)
-
-		// Extract task ID from worktree name (remove suffix)
-		taskID := worktreeName
-		if idx := strings.LastIndex(worktreeName, "-"); idx > 0 {
-			// Keep the full name for display, but try to extract base task ID
-			baseTaskID := worktreeName[:strings.Index(worktreeName, "-")]
-			if strings.HasPrefix(baseTaskID, "task-") {
-				taskID = baseTaskID
-			}
-		}
 
 		// Check if there are any git changes
 		statusCmd := exec.Command("git", "-C", worktreePath, "status", "--porcelain")
@@ -428,6 +422,142 @@ func runStatus() {
 	}
 
 	fmt.Println("💡 Tip: cd into a worktree to see detailed changes with 'git status' and 'git log'")
+}
+
+func runAccept() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: autom8 accept <worktree-name>")
+		fmt.Println("Run 'autom8 status' to see available worktrees.")
+		os.Exit(1)
+	}
+
+	worktreeName := os.Args[2]
+
+	gitRoot, err := getGitRoot()
+	if err != nil {
+		fmt.Printf("Error getting git root: %v\n", err)
+		os.Exit(1)
+	}
+
+	autom8Path, err := getAutom8Dir()
+	if err != nil {
+		fmt.Printf("Error getting autom8 dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	worktreePath := filepath.Join(autom8Path, "worktrees", worktreeName)
+
+	// Check if worktree exists
+	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
+		fmt.Printf("Error: worktree '%s' not found\n", worktreeName)
+		fmt.Println("Run 'autom8 status' to see available worktrees.")
+		os.Exit(1)
+	}
+
+	// Get the branch name from the worktree
+	branchCmd := exec.Command("git", "-C", worktreePath, "branch", "--show-current")
+	branchOutput, err := branchCmd.Output()
+	if err != nil {
+		fmt.Printf("Error getting branch name: %v\n", err)
+		os.Exit(1)
+	}
+	branchName := strings.TrimSpace(string(branchOutput))
+
+	if branchName == "" {
+		fmt.Println("Error: could not determine branch name for worktree")
+		os.Exit(1)
+	}
+
+	fmt.Printf("Merging branch '%s' into current branch...\n", branchName)
+
+	// Merge the branch into the current branch
+	mergeCmd := exec.Command("git", "-C", gitRoot, "merge", branchName, "-m", fmt.Sprintf("Merge %s (autom8 accept)", branchName))
+	mergeOutput, err := mergeCmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("Error merging branch: %v\n%s\n", err, string(mergeOutput))
+		fmt.Println("Resolve conflicts manually, then run 'autom8 accept' again to clean up.")
+		os.Exit(1)
+	}
+	fmt.Printf("%s", string(mergeOutput))
+
+	// Remove the worktree
+	fmt.Printf("Removing worktree '%s'...\n", worktreeName)
+	removeCmd := exec.Command("git", "-C", gitRoot, "worktree", "remove", worktreePath)
+	removeOutput, err := removeCmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("Error removing worktree: %v\n%s\n", err, string(removeOutput))
+		fmt.Println("You may need to manually remove it with: git worktree remove", worktreePath)
+		os.Exit(1)
+	}
+
+	// Delete the branch (it's been merged)
+	fmt.Printf("Deleting branch '%s'...\n", branchName)
+	deleteBranchCmd := exec.Command("git", "-C", gitRoot, "branch", "-d", branchName)
+	deleteBranchOutput, err := deleteBranchCmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("Warning: could not delete branch: %v\n%s\n", err, string(deleteBranchOutput))
+		fmt.Println("The branch may need to be deleted manually with: git branch -D", branchName)
+	}
+
+	fmt.Printf("\nSuccessfully accepted worktree '%s'\n", worktreeName)
+}
+
+func runDelete() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: autom8 delete <task-id>")
+		fmt.Println("Run 'autom8 list' to see task IDs.")
+		os.Exit(1)
+	}
+
+	taskID := os.Args[2]
+
+	tasks, err := loadTasks()
+	if err != nil {
+		fmt.Printf("Error loading tasks: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Find the task
+	taskIndex := -1
+	for i, t := range tasks {
+		if t.ID == taskID {
+			taskIndex = i
+			break
+		}
+	}
+
+	if taskIndex == -1 {
+		fmt.Printf("Error: task '%s' not found\n", taskID)
+		fmt.Println("Run 'autom8 list' to see task IDs.")
+		os.Exit(1)
+	}
+
+	// Check if any other tasks depend on this one
+	var dependents []string
+	for _, t := range tasks {
+		if t.DependsOn == taskID {
+			dependents = append(dependents, t.ID)
+		}
+	}
+
+	if len(dependents) > 0 {
+		fmt.Printf("Error: cannot delete task '%s' because these tasks depend on it:\n", taskID)
+		for _, dep := range dependents {
+			fmt.Printf("  - %s\n", dep)
+		}
+		fmt.Println("Delete the dependent tasks first, or use a different approach.")
+		os.Exit(1)
+	}
+
+	// Remove the task
+	tasks = append(tasks[:taskIndex], tasks[taskIndex+1:]...)
+
+	if err := saveTasks(tasks); err != nil {
+		fmt.Printf("Error saving tasks: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Task '%s' deleted.\n", taskID)
 }
 
 func runImplement() {
