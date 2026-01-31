@@ -467,6 +467,18 @@ func runFeature(cmd *cobra.Command, args []string) error {
 		// Interactive mode with huh
 		var criteriaInput string
 
+		// Load existing tasks for dependency selection
+		existingTasks, _ := loadTasks()
+
+		// Build dependency options
+		dependsOnOptions := []huh.Option[string]{
+			huh.NewOption[string]("None (independent task)", ""),
+		}
+		for _, t := range existingTasks {
+			label := fmt.Sprintf("%s - %s", t.ID, truncate(t.Prompt, 40))
+			dependsOnOptions = append(dependsOnOptions, huh.NewOption[string](label, t.ID))
+		}
+
 		form := huh.NewForm(
 			huh.NewGroup(
 				huh.NewText().
@@ -489,10 +501,10 @@ func runFeature(cmd *cobra.Command, args []string) error {
 					Value(&criteriaInput),
 			),
 			huh.NewGroup(
-				huh.NewInput().
+				huh.NewSelect[string]().
 					Title("Depends On").
-					Description("Task ID this depends on (optional)").
-					Placeholder("task-123456789").
+					Description("Select a task this depends on (optional)").
+					Options(dependsOnOptions...).
 					Value(&dependsOn),
 			),
 		).WithTheme(huh.ThemeDracula())
@@ -1489,6 +1501,17 @@ func runEdit(cmd *cobra.Command, args []string) error {
 	criteriaInput := strings.Join(task.VerificationCriteria, "\n")
 	dependsOn := task.DependsOn
 
+	// Build dependency options (exclude current task to prevent self-reference)
+	dependsOnOptions := []huh.Option[string]{
+		huh.NewOption[string]("None (independent task)", ""),
+	}
+	for _, t := range tasks {
+		if t.ID != taskID { // Can't depend on itself
+			label := fmt.Sprintf("%s - %s", t.ID, truncate(t.Prompt, 40))
+			dependsOnOptions = append(dependsOnOptions, huh.NewOption[string](label, t.ID))
+		}
+	}
+
 	// Interactive editing with huh
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -1510,10 +1533,10 @@ func runEdit(cmd *cobra.Command, args []string) error {
 				Value(&criteriaInput),
 		),
 		huh.NewGroup(
-			huh.NewInput().
+			huh.NewSelect[string]().
 				Title("Depends On").
-				Description("Task ID this depends on (optional)").
-				Placeholder("task-123456789").
+				Description("Select a task this depends on (optional)").
+				Options(dependsOnOptions...).
 				Value(&dependsOn),
 		),
 	).WithTheme(huh.ThemeDracula())
