@@ -1,0 +1,18 @@
+[
+  {
+    "id": "task-1769901699016953000",
+    "prompt": "Implement a review loop that runs after implementation completes.\n\n## Background\nCurrently, when an implementer agent outputs 'TASK COMPLETE', the ralph loop ends and the worktree is marked as ready. We want to add a review step between implementation completion and final readiness.\n\n## Codex CLI Usage\nThe review should use the `codex review` subcommand which is designed for code reviews:\n```bash\ncodex review --base \u003cbase-branch\u003e \"\u003creview prompt\u003e\"\n```\nThis command automatically handles the diff comparison against the base branch.\n\nFor implementation fixes (when review fails), use:\n```bash\ncodex exec --dangerously-bypass-approvals-and-sandbox \"\u003cprompt\u003e\"\n```\n\n## Requirements\n\n### Review Loop Mechanism\nAfter the implementation loop detects 'TASK COMPLETE':\n1. Start a new loop called the 'review loop'\n2. Invoke `codex review --base \u003cbase-branch\u003e \"\u003cprompt\u003e\"` where base-branch is the branch the worktree was created from\n3. The review prompt should include:\n   - The reviewer.md agent template (from src/agents/reviewer.md)\n   - The original task description\n   - The verification criteria\n   - Instructions to output 'REVIEW APPROVED' when satisfied\n\n### Loop Termination\nThe review loop should continue iterating until the codex reviewer outputs 'REVIEW APPROVED' (case-sensitive).\n- If codex outputs 'REVIEW APPROVED', the review loop ends successfully\n- If codex doesn't output 'REVIEW APPROVED', it means there are issues to fix\n- The reviewer's feedback should be appended to the implementation prompt\n- Run another implementation iteration with `codex exec --dangerously-bypass-approvals-and-sandbox` passing the feedback\n- Then run the review loop again\n- This continues until the reviewer approves\n\n### Max Review Cycles\nAdd a maximum number of review cycles (default: 5) to prevent infinite loops. If max cycles reached without approval, mark as '[stopped]' with appropriate message.\n\n### Integration Point\nModify the `implementTaskWithSuffix()` function in src/main.go:\n- After detecting 'TASK COMPLETE', don't return immediately\n- Instead, start the review loop\n- Only return the '[completed]' status after 'REVIEW APPROVED' is detected\n\n### Logging\n- Log review iterations to the same logs directory\n- Use naming like 'review-iteration-N.log' to distinguish from implementation logs\n- Log implementation fix iterations as 'fix-iteration-N.log'\n\n### Agent Template for Reviewer\nUpdate src/agents/reviewer.md to include:\n- Instructions for outputting 'REVIEW APPROVED' when the implementation is satisfactory\n- Instructions to provide specific, actionable feedback when issues are found\n- Clear format for feedback that can be parsed and passed to the implementer",
+    "verification_criteria": [
+      "Review loop is triggered after 'TASK COMPLETE' is detected in implementation output",
+      "codex review --base \u003cbranch\u003e is used for the review step (not claude)",
+      "reviewer.md template is included in the review prompt along with task description and verification criteria",
+      "Review loop continues until 'REVIEW APPROVED' is detected in codex output",
+      "If review fails, feedback is appended to prompt and codex exec runs implementation fixes",
+      "Maximum review cycles limit (default 5) prevents infinite loops",
+      "Review iterations are logged separately (review-iteration-N.log, fix-iteration-N.log)",
+      "reviewer.md is updated to instruct the agent to output 'REVIEW APPROVED' when satisfied"
+    ],
+    "created_at": "2026-02-01T00:21:39.01696+01:00",
+    "status": "pending"
+  }
+]
