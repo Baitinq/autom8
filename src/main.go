@@ -869,6 +869,19 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
+	// Mark all pending tasks as in-progress before starting
+	for i, t := range tasks {
+		for _, pt := range pendingTasks {
+			if t.ID == pt.ID {
+				tasks[i].Status = "in-progress"
+				break
+			}
+		}
+	}
+	if err := saveTasks(tasks); err != nil {
+		return fmt.Errorf("error updating task status: %w", err)
+	}
+
 	var wg sync.WaitGroup
 	results := make(chan string, totalIndependent+totalDependent)
 
