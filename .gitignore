@@ -1,5 +1,5 @@
 # Binary
-autom8
+/autom8
 
 # autom8 worktrees (tasks.json should be committed)
 .autom8/worktrees/
