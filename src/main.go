@@ -897,6 +897,11 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	taskID := args[0]
 
+	gitRoot, err := getGitRoot()
+	if err != nil {
+		return err
+	}
+
 	tasks, err := loadTasks()
 	if err != nil {
 		return fmt.Errorf("error loading tasks: %w", err)
@@ -932,6 +937,39 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(msg)
 	}
 
+	// Clean up associated worktrees
+	autom8Path, _ := getAutom8Dir()
+	worktreesDir := filepath.Join(autom8Path, "worktrees")
+	var worktreesRemoved int
+
+	if entries, err := os.ReadDir(worktreesDir); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			worktreeName := entry.Name()
+			// Check if worktree belongs to this task (task-{id}-{instance})
+			if strings.HasPrefix(worktreeName, taskID+"-") {
+				worktreePath := filepath.Join(worktreesDir, worktreeName)
+				// Get branch name before removing
+				branchCmd := exec.Command("git", "-C", worktreePath, "branch", "--show-current")
+				branchOutput, _ := branchCmd.Output()
+				branchName := strings.TrimSpace(string(branchOutput))
+
+				// Remove worktree
+				removeCmd := exec.Command("git", "-C", gitRoot, "worktree", "remove", "--force", worktreePath)
+				if removeCmd.Run() == nil {
+					worktreesRemoved++
+					// Delete the branch
+					if branchName != "" {
+						deleteBranchCmd := exec.Command("git", "-C", gitRoot, "branch", "-D", branchName)
+						deleteBranchCmd.Run()
+					}
+				}
+			}
+		}
+	}
+
 	// Remove the task
 	tasks = append(tasks[:taskIndex], tasks[taskIndex+1:]...)
 
@@ -939,7 +977,11 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error saving tasks: %w", err)
 	}
 
-	fmt.Println(successStyle.Render(fmt.Sprintf("Task '%s' deleted.", taskID)))
+	if worktreesRemoved > 0 {
+		fmt.Println(successStyle.Render(fmt.Sprintf("Task '%s' deleted, removed %d worktree(s).", taskID, worktreesRemoved)))
+	} else {
+		fmt.Println(successStyle.Render(fmt.Sprintf("Task '%s' deleted.", taskID)))
+	}
 	return nil
 }
 
