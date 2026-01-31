@@ -1,8 +1,9 @@
 # Binary
 /autom8
 
-# autom8 worktrees (tasks.json should be committed)
-.autom8/worktrees/
+# autom8 runtime directory (only tasks.json should be committed)
+.autom8/*
+!.autom8/tasks.json
 
 # Editor
 .idea/
