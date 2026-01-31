@@ -309,6 +309,7 @@ var (
 	criteriaFlags []string
 	dependsOnFlag string
 	numInstances  int
+	maxIterations int
 	mergeFlag     bool
 )
 
@@ -333,6 +334,7 @@ func init() {
 
 	// Implement command flags
 	implementCmd.Flags().IntVarP(&numInstances, "instances", "n", 1, "Number of parallel instances per task")
+	implementCmd.Flags().IntVarP(&maxIterations, "max-iterations", "m", 0, "Maximum iterations per worktree (0 = unlimited)")
 
 	// Converge command flags
 	convergeCmd.Flags().BoolVarP(&mergeFlag, "merge", "m", false, "Auto-merge the winning implementation")
@@ -1882,7 +1884,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 			wg.Add(1)
 			go func(t Task, s string) {
 				defer wg.Done()
-				result := implementTaskWithSuffix(t, gitRoot, worktreesDir, "", s, agentTemplate)
+				result := implementTaskWithSuffix(t, gitRoot, worktreesDir, "", s, agentTemplate, maxIterations)
 				results <- result
 			}(task, suffix)
 		}
@@ -1905,7 +1907,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 				go func(t Task, ds, s string) {
 					defer wg.Done()
 					baseBranch := fmt.Sprintf("%s%s", t.DependsOn, ds)
-					result := implementTaskWithSuffix(t, gitRoot, worktreesDir, baseBranch, s, agentTemplate)
+					result := implementTaskWithSuffix(t, gitRoot, worktreesDir, baseBranch, s, agentTemplate, maxIterations)
 					results <- result
 				}(task, depSuffix, suffix)
 			}
@@ -1923,12 +1925,12 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	fmt.Println(successStyle.Render("All tasks started!"))
-	fmt.Println(subtitleStyle.Render("Use 'autom8 status' to check progress."))
+	fmt.Println(successStyle.Render("All implementations complete!"))
+	fmt.Println(subtitleStyle.Render("Use 'autom8 status' to see results."))
 	return nil
 }
 
-func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suffix, agentTemplate string) string {
+func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suffix, agentTemplate string, maxIter int) string {
 	instanceID := task.ID + suffix
 	worktreePath := filepath.Join(worktreesDir, instanceID)
 
@@ -1952,6 +1954,13 @@ func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suf
 		return fmt.Sprintf("  %s %s: %v\n%s", errorStyle.Render("[error]"), instanceID, err, string(output))
 	}
 
+	// Create logs directory for this worktree
+	autom8Path := filepath.Dir(worktreesDir)
+	logsDir := filepath.Join(autom8Path, "logs", instanceID)
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return fmt.Sprintf("  %s %s: failed to create logs dir: %v", errorStyle.Render("[error]"), instanceID, err)
+	}
+
 	// Build the prompt with agent template, task, and verification criteria
 	var promptBuilder strings.Builder
 	if agentTemplate != "" {
@@ -1966,23 +1975,45 @@ func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suf
 	}
 	prompt := promptBuilder.String()
 
-	// Run claude in the worktree
-	claudeCmd := exec.Command("claude", "-p", prompt, "--dangerously-skip-permissions")
-	claudeCmd.Dir = worktreePath
+	// Run claude in a loop until TASK COMPLETE or max iterations
+	iteration := 0
+	for {
+		iteration++
 
-	if err := claudeCmd.Start(); err != nil {
-		return fmt.Sprintf("  %s %s: failed to start claude: %v", errorStyle.Render("[error]"), instanceID, err)
+		// Check max iterations limit
+		if maxIter > 0 && iteration > maxIter {
+			return fmt.Sprintf("  %s %s (max iterations %d reached)", statusPendingStyle.Render("[stopped]"), instanceID, maxIter)
+		}
+
+		// Create log file for this iteration
+		logFile := filepath.Join(logsDir, fmt.Sprintf("iteration-%d.log", iteration))
+
+		// Run claude synchronously and capture output
+		claudeCmd := exec.Command("claude", "-p", prompt, "--dangerously-skip-permissions")
+		claudeCmd.Dir = worktreePath
+
+		output, err := claudeCmd.Output()
+		if err != nil {
+			// Log the error
+			os.WriteFile(logFile, []byte(fmt.Sprintf("ERROR: %v\n%s", err, string(output))), 0644)
+			return fmt.Sprintf("  %s %s (iteration %d failed: %v)", errorStyle.Render("[error]"), instanceID, iteration, err)
+		}
+
+		// Write output to log file
+		os.WriteFile(logFile, output, 0644)
+
+		// Check if output contains TASK COMPLETE
+		if strings.Contains(string(output), "TASK COMPLETE") {
+			baseInfo := "HEAD"
+			if baseBranchID != "" {
+				baseInfo = fmt.Sprintf("autom8/%s", baseBranchID)
+			}
+			return fmt.Sprintf("  %s %s (branch: %s, base: %s, iterations: %d)",
+				successStyle.Render("[completed]"), instanceID, highlightStyle.Render(branchName), idStyle.Render(baseInfo), iteration)
+		}
+
+		// Continue to next iteration
 	}
-
-	// Save the PID for tracking
-	savePid(instanceID, claudeCmd.Process.Pid)
-
-	baseInfo := "HEAD"
-	if baseBranchID != "" {
-		baseInfo = fmt.Sprintf("autom8/%s", baseBranchID)
-	}
-	return fmt.Sprintf("  %s %s (branch: %s, base: %s)",
-		successStyle.Render("[started]"), instanceID, highlightStyle.Render(branchName), idStyle.Render(baseInfo))
 }
 
 func truncate(s string, maxLen int) string {
