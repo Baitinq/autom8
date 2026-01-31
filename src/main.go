@@ -418,6 +418,11 @@ func runStatus() {
 			fmt.Printf("   Uncommitted changes: yes\n")
 		}
 		fmt.Printf("   Path: %s\n", worktreePath)
+
+		// Show accept hint if there's something to accept (commits or uncommitted changes)
+		if !isRunning && (commitsAhead != "0" || hasChanges) {
+			fmt.Printf("   ➡️  To accept: autom8 accept %s\n", worktreeName)
+		}
 		fmt.Println()
 	}
 
@@ -466,6 +471,33 @@ func runAccept() {
 	if branchName == "" {
 		fmt.Println("Error: could not determine branch name for worktree")
 		os.Exit(1)
+	}
+
+	// Check for uncommitted changes in the worktree
+	statusCmd := exec.Command("git", "-C", worktreePath, "status", "--porcelain")
+	statusOutput, err := statusCmd.Output()
+	if err != nil {
+		fmt.Printf("Error checking worktree status: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(strings.TrimSpace(string(statusOutput))) > 0 {
+		fmt.Println("Found uncommitted changes, auto-committing...")
+
+		// Stage all changes
+		addCmd := exec.Command("git", "-C", worktreePath, "add", "-A")
+		if addOutput, err := addCmd.CombinedOutput(); err != nil {
+			fmt.Printf("Error staging changes: %v\n%s\n", err, string(addOutput))
+			os.Exit(1)
+		}
+
+		// Commit with auto-commit message
+		commitCmd := exec.Command("git", "-C", worktreePath, "commit", "-m", "autom8: auto-commit uncommitted changes")
+		if commitOutput, err := commitCmd.CombinedOutput(); err != nil {
+			fmt.Printf("Error committing changes: %v\n%s\n", err, string(commitOutput))
+			os.Exit(1)
+		}
+		fmt.Println("Auto-committed successfully.")
 	}
 
 	fmt.Printf("Merging branch '%s' into current branch...\n", branchName)
