@@ -52,6 +52,32 @@ Review the implementation thoroughly and provide your honest assessment.
 - Be specific - point to exact lines or patterns when noting issues
 - Acknowledge what's done well, not just what's wrong
 
+## Exit Signal
+
+After completing your review, you MUST output one of the following:
+
+### If the implementation is satisfactory:
+Output the exact phrase: `REVIEW APPROVED`
+
+This indicates that all verification criteria are met and the code is ready.
+
+### If the implementation needs changes:
+Do NOT output `REVIEW APPROVED`. Instead, provide specific, actionable feedback in this format:
+
+```
+## Required Changes
+
+1. [First issue that needs fixing]
+   - What's wrong: [description]
+   - How to fix: [specific suggestion]
+
+2. [Second issue that needs fixing]
+   - What's wrong: [description]
+   - How to fix: [specific suggestion]
+```
+
+Your feedback will be passed back to the implementer to make corrections.
+
 ---
 
 ## Task
