@@ -26,10 +26,10 @@ You are helping the user define a task for autom8 - a tool that runs parallel AI
 
 ## When Ready
 
-Once you've discussed the feature enough and the user confirms they're ready to create the task, run `autom8 feature` with the appropriate flags:
+Once you've discussed the feature enough and the user confirms they're ready to create the task, run `autom8 new` with the appropriate flags:
 
 ```bash
-autom8 feature -p "<prompt>" -c "<criterion1>" -c "<criterion2>" ...
+autom8 new -p "<prompt>" -c "<criterion1>" -c "<criterion2>" ...
 ```
 
 If the task depends on another task, add `-d <task-id>`.
@@ -44,7 +44,7 @@ If the task depends on another task, add `-d <task-id>`.
 ### Example
 
 ```bash
-autom8 feature \
+autom8 new \
   -p "Add a --dry-run flag to the implement command. When set, it should print what would happen (worktrees that would be created, branches, commands) without actually creating anything or spawning Claude processes." \
   -c "implement command accepts --dry-run / -d flag" \
   -c "With --dry-run, no worktrees are created" \

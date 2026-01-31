@@ -62,7 +62,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 
 | Command | Description |
 |---------|-------------|
-| `autom8 feature` | Create a new task (interactive or via flags) |
+| `autom8 new` | Create a new task (interactive or via flags) |
 | `autom8 status` | Display all tasks with status (alias: `list`, `ls`) |
 | `autom8 implement -n N` | Run N parallel agents per task |
 | `autom8 converge` | Use AI to pick best implementation from multiple worktrees |
@@ -74,7 +74,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 
 ### Flag Reference
 
-**`autom8 feature`**:
+**`autom8 new`**:
 - `-p <prompt>` - Task prompt (non-interactive)
 - `-c <criterion>` - Verification criterion (repeatable)
 - `-d <task-id>` - Dependency task ID

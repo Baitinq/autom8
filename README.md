@@ -24,13 +24,13 @@ go build -o autom8 ./src
 
 ```bash
 # Interactive mode
-autom8 feature
+autom8 new
 
 # Non-interactive mode
-autom8 feature -p "Add user authentication" -c "Login endpoint works" -c "Passwords are hashed"
+autom8 new -p "Add user authentication" -c "Login endpoint works" -c "Passwords are hashed"
 
 # With dependency on another task
-autom8 feature -p "Add logout button" -d task-1234567890
+autom8 new -p "Add logout button" -d task-1234567890
 ```
 
 ### List tasks
@@ -57,7 +57,7 @@ With `-n 3`, you get exponential branching:
 
 ## How it works
 
-1. **Define** - Use `autom8 feature` to create tasks with prompts, verification criteria, and dependencies
+1. **Define** - Use `autom8 new` to create tasks with prompts, verification criteria, and dependencies
 2. **Store** - Tasks are saved to `.autom8/tasks.json` (committed to repo)
 3. **Implement** - `autom8 implement` creates git worktrees and runs Claude CLI in each
 
