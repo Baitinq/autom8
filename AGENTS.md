@@ -19,7 +19,8 @@ autom8/
 │   └── main.go              # All application logic (single file)
 ├── agents/
 │   ├── implementer.md       # Prompt template for implementation agents
-│   └── reviewer.md          # Prompt template for review agents
+│   ├── reviewer.md          # Prompt template for review agents
+│   └── converger.md         # Prompt template for convergence agents
 ├── flake.nix                # Nix flake for dev environment & build
 ├── flake.lock               # Pinned Nix dependencies
 ├── shell.nix                # Alternative Nix shell entry point
@@ -42,6 +43,7 @@ The fundamental data structure (defined in `src/main.go`) containing:
 - **DependsOn** - Optional parent task ID
 - **CreatedAt** - Timestamp
 - **Status** - `pending`, `in-progress`, or `completed`
+- **Winner** - Winning worktree name (set by `converge` command)
 
 ### Worktrees
 
@@ -61,8 +63,14 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | Command | Description |
 |---------|-------------|
 | `autom8 feature` | Create a new task (interactive or via flags) |
-| `autom8 list` | Display all tasks with status |
+| `autom8 status` | Display all tasks with status (alias: `list`, `ls`) |
 | `autom8 implement -n N` | Run N parallel agents per task |
+| `autom8 converge` | Use AI to pick best implementation from multiple worktrees |
+| `autom8 accept <worktree>` | Merge a worktree branch and clean up |
+| `autom8 inspect <worktree>` | Open a shell in a worktree directory |
+| `autom8 describe <task-id>` | Show detailed task information |
+| `autom8 delete <task-id>` | Delete a task |
+| `autom8 prune` | Delete all completed tasks |
 
 ### Flag Reference
 
@@ -73,6 +81,9 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 
 **`autom8 implement`**:
 - `-n <count>` - Number of parallel instances per task (default: 1)
+
+**`autom8 converge`**:
+- `-m, --merge` - Auto-merge the winning implementation
 
 ## Code Organization
 
