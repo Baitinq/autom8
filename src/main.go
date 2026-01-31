@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +16,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
+
+//go:embed agents/*.md
+var agentTemplates embed.FS
 
 const (
 	autom8Dir = ".autom8"
@@ -342,6 +346,14 @@ func ensureAutom8Dir() (string, error) {
 	}
 
 	return dir, nil
+}
+
+func loadAgentTemplate(name string) (string, error) {
+	data, err := agentTemplates.ReadFile("agents/" + name + ".md")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func loadTasks() ([]Task, error) {
@@ -1653,6 +1665,13 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error updating task status: %w", err)
 	}
 
+	// Load the implementer agent template
+	agentTemplate, err := loadAgentTemplate("implementer")
+	if err != nil {
+		// Template is optional, continue without it
+		agentTemplate = ""
+	}
+
 	var wg sync.WaitGroup
 	results := make(chan string, totalIndependent+totalDependent)
 
@@ -1668,7 +1687,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 			wg.Add(1)
 			go func(t Task, s string) {
 				defer wg.Done()
-				result := implementTaskWithSuffix(t, gitRoot, worktreesDir, "", s)
+				result := implementTaskWithSuffix(t, gitRoot, worktreesDir, "", s, agentTemplate)
 				results <- result
 			}(task, suffix)
 		}
@@ -1691,7 +1710,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 				go func(t Task, ds, s string) {
 					defer wg.Done()
 					baseBranch := fmt.Sprintf("%s%s", t.DependsOn, ds)
-					result := implementTaskWithSuffix(t, gitRoot, worktreesDir, baseBranch, s)
+					result := implementTaskWithSuffix(t, gitRoot, worktreesDir, baseBranch, s, agentTemplate)
 					results <- result
 				}(task, depSuffix, suffix)
 			}
@@ -1714,7 +1733,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suffix string) string {
+func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suffix, agentTemplate string) string {
 	instanceID := task.ID + suffix
 	worktreePath := filepath.Join(worktreesDir, instanceID)
 
@@ -1738,14 +1757,19 @@ func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suf
 		return fmt.Sprintf("  %s %s: %v\n%s", errorStyle.Render("[error]"), instanceID, err, string(output))
 	}
 
-	// Build the prompt with verification criteria
-	prompt := task.Prompt
+	// Build the prompt with agent template, task, and verification criteria
+	var promptBuilder strings.Builder
+	if agentTemplate != "" {
+		promptBuilder.WriteString(agentTemplate)
+	}
+	promptBuilder.WriteString(task.Prompt)
 	if len(task.VerificationCriteria) > 0 {
-		prompt += "\n\nVerification criteria:\n"
+		promptBuilder.WriteString("\n\n## Verification Criteria\n\n")
 		for _, c := range task.VerificationCriteria {
-			prompt += fmt.Sprintf("- %s\n", c)
+			promptBuilder.WriteString(fmt.Sprintf("- %s\n", c))
 		}
 	}
+	prompt := promptBuilder.String()
 
 	// Run claude in the worktree
 	claudeCmd := exec.Command("claude", "-p", prompt, "--dangerously-skip-permissions")

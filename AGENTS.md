@@ -16,11 +16,11 @@ This document serves as the ground truth for AI agents working on this repositor
 ```
 autom8/
 ├── src/
-│   └── main.go              # All application logic (single file)
-├── agents/
-│   ├── implementer.md       # Prompt template for implementation agents
-│   ├── reviewer.md          # Prompt template for review agents
-│   └── converger.md         # Prompt template for convergence agents
+│   ├── main.go              # All application logic (single file)
+│   └── agents/              # Embedded agent templates (compiled into binary)
+│       ├── implementer.md   # Prompt template for implementation agents
+│       ├── reviewer.md      # Prompt template for review agents
+│       └── converger.md     # Prompt template for convergence agents
 ├── flake.nix                # Nix flake for dev environment & build
 ├── flake.lock               # Pinned Nix dependencies
 ├── shell.nix                # Alternative Nix shell entry point
@@ -181,7 +181,7 @@ Look for `exec.Command("claude", ...)` in `createWorktreeAndRun()`
 ## Files to Preserve
 
 - `.autom8/tasks.json` - User's task definitions (should be committed)
-- `agents/*.md` - Prompt templates for AI agents
+- `src/agents/*.md` - Prompt templates for AI agents (embedded into binary)
 
 ## Files That Are Ephemeral
 
