@@ -80,24 +80,25 @@ It enables you to:
   - Manage task dependencies
   - Run multiple Claude AI agents in parallel
   - Isolate each agent's work in separate git worktrees`,
-	SilenceUsage: true,
+	SilenceUsage:          true,
+	CompletionOptions:     cobra.CompletionOptions{DisableDefaultCmd: true},
 }
 
-var featureCmd = &cobra.Command{
-	Use:   "feature",
+var newCmd = &cobra.Command{
+	Use:   "new",
 	Short: "Create a new task/prompt",
 	Long: `Create a new task with a prompt and optional verification criteria.
 
 Without flags, starts an interactive mode to guide you through task creation.
 With flags, creates the task directly (non-interactive mode).`,
 	Example: `  # Interactive mode
-  autom8 feature
+  autom8 new
 
   # Non-interactive mode
-  autom8 feature -p "Add login page" -c "Has email field" -c "Has password field"
+  autom8 new -p "Add login page" -c "Has email field" -c "Has password field"
 
   # With dependency
-  autom8 feature -p "Add logout button" -d task-123456789`,
+  autom8 new -p "Add logout button" -d task-123456789`,
 	RunE: runFeature,
 }
 
@@ -250,58 +251,6 @@ changes an implementation has made.`,
 	RunE:    runShow,
 }
 
-var completionCmd = &cobra.Command{
-	Use:   "completion [bash|zsh|fish|powershell]",
-	Short: "Generate shell completion scripts",
-	Long: `Generate completion scripts for your shell.
-
-To load completions:
-
-Bash:
-  $ source <(autom8 completion bash)
-  # To load completions for each session, execute once:
-  # Linux:
-  $ autom8 completion bash > /etc/bash_completion.d/autom8
-  # macOS:
-  $ autom8 completion bash > $(brew --prefix)/etc/bash_completion.d/autom8
-
-Zsh:
-  # If shell completion is not already enabled in your environment,
-  # you will need to enable it. You can execute the following once:
-  $ echo "autoload -U compinit; compinit" >> ~/.zshrc
-
-  # To load completions for each session, execute once:
-  $ autom8 completion zsh > "${fpath[1]}/_autom8"
-
-Fish:
-  $ autom8 completion fish | source
-  # To load completions for each session, execute once:
-  $ autom8 completion fish > ~/.config/fish/completions/autom8.fish
-
-PowerShell:
-  PS> autom8 completion powershell | Out-String | Invoke-Expression
-  # To load completions for every new session, run:
-  PS> autom8 completion powershell > autom8.ps1
-  # and source this file from your PowerShell profile.
-`,
-	DisableFlagsInUseLine: true,
-	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
-	Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		switch args[0] {
-		case "bash":
-			return rootCmd.GenBashCompletion(os.Stdout)
-		case "zsh":
-			return rootCmd.GenZshCompletion(os.Stdout)
-		case "fish":
-			return rootCmd.GenFishCompletion(os.Stdout, true)
-		case "powershell":
-			return rootCmd.GenPowerShellCompletionWithDesc(os.Stdout)
-		default:
-			return fmt.Errorf("unknown shell: %s", args[0])
-		}
-	},
-}
 
 // Flags
 var (
@@ -314,7 +263,7 @@ var (
 )
 
 func init() {
-	rootCmd.AddCommand(featureCmd)
+	rootCmd.AddCommand(newCmd)
 	rootCmd.AddCommand(implementCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(acceptCmd)
@@ -325,12 +274,11 @@ func init() {
 	rootCmd.AddCommand(pruneCmd)
 	rootCmd.AddCommand(convergeCmd)
 	rootCmd.AddCommand(showCmd)
-	rootCmd.AddCommand(completionCmd)
 
-	// Feature command flags
-	featureCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "Task prompt (non-interactive mode)")
-	featureCmd.Flags().StringArrayVarP(&criteriaFlags, "criteria", "c", []string{}, "Verification criteria (can be specified multiple times)")
-	featureCmd.Flags().StringVarP(&dependsOnFlag, "depends-on", "d", "", "Task ID this depends on")
+	// New command flags
+	newCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "Task prompt (non-interactive mode)")
+	newCmd.Flags().StringArrayVarP(&criteriaFlags, "criteria", "c", []string{}, "Verification criteria (can be specified multiple times)")
+	newCmd.Flags().StringVarP(&dependsOnFlag, "depends-on", "d", "", "Task ID this depends on")
 
 	// Implement command flags
 	implementCmd.Flags().IntVarP(&numInstances, "instances", "n", 1, "Number of parallel instances per task")
@@ -673,7 +621,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(tasks) == 0 {
-		fmt.Println(subtitleStyle.Render("No tasks found. Use 'autom8 feature' to create one."))
+		fmt.Println(subtitleStyle.Render("No tasks found. Use 'autom8 new' to create one."))
 		return nil
 	}
 
@@ -1772,7 +1720,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(tasks) == 0 {
-		fmt.Println(subtitleStyle.Render("No tasks found. Use 'autom8 feature' to create one."))
+		fmt.Println(subtitleStyle.Render("No tasks found. Use 'autom8 new' to create one."))
 		return nil
 	}
 
