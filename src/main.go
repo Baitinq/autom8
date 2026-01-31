@@ -238,6 +238,18 @@ If no task ID is provided, all tasks with multiple worktrees will be evaluated.`
 	RunE: runConverge,
 }
 
+var showCmd = &cobra.Command{
+	Use:   "show <worktree-name>",
+	Short: "Show the diff between main and a worktree (PR-style)",
+	Long: `Display the changes in a worktree compared to the main branch.
+
+This shows the diff in a PR-style format, making it easy to review what
+changes an implementation has made.`,
+	Example: `  autom8 show task-123456789-1`,
+	Args:    cobra.ExactArgs(1),
+	RunE:    runShow,
+}
+
 var completionCmd = &cobra.Command{
 	Use:   "completion [bash|zsh|fish|powershell]",
 	Short: "Generate shell completion scripts",
@@ -311,6 +323,7 @@ func init() {
 	rootCmd.AddCommand(editCmd)
 	rootCmd.AddCommand(pruneCmd)
 	rootCmd.AddCommand(convergeCmd)
+	rootCmd.AddCommand(showCmd)
 	rootCmd.AddCommand(completionCmd)
 
 	// Feature command flags
@@ -1072,6 +1085,61 @@ func runInspect(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fmt.Println(successStyle.Render("Exited worktree inspection."))
+	return nil
+}
+
+func runShow(cmd *cobra.Command, args []string) error {
+	worktreeName := args[0]
+
+	autom8Path, err := getAutom8Dir()
+	if err != nil {
+		return fmt.Errorf("error getting autom8 dir: %w", err)
+	}
+
+	worktreePath := filepath.Join(autom8Path, "worktrees", worktreeName)
+
+	// Check if worktree exists
+	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
+		return fmt.Errorf("worktree '%s' not found\nRun 'autom8 status' to see available worktrees", worktreeName)
+	}
+
+	// Get worktree info for display
+	worktreesDir := filepath.Join(autom8Path, "worktrees")
+	pids, _ := loadPids()
+	info := getWorktreeInfo(worktreesDir, worktreeName, pids)
+
+	fmt.Println(titleStyle.Render(fmt.Sprintf("Diff: main...%s", info.Branch)))
+	fmt.Println()
+	fmt.Printf("  %s %s\n", subtitleStyle.Render("Worktree:"), highlightStyle.Render(worktreeName))
+	fmt.Printf("  %s %s\n", subtitleStyle.Render("Branch:"), highlightStyle.Render(info.Branch))
+	fmt.Printf("  %s %s commit(s) ahead of main\n", subtitleStyle.Render("Commits:"), info.CommitsAhead)
+	fmt.Println()
+
+	// Get the diff between main and the worktree branch
+	diffCmd := exec.Command("git", "-C", worktreePath, "diff", "main...HEAD", "--stat")
+	statOutput, _ := diffCmd.Output()
+
+	if len(statOutput) > 0 {
+		fmt.Println(subtitleStyle.Render("Files changed:"))
+		fmt.Println(string(statOutput))
+	}
+
+	// Get the full diff
+	fullDiffCmd := exec.Command("git", "-C", worktreePath, "diff", "main...HEAD")
+	fullDiffOutput, err := fullDiffCmd.Output()
+	if err != nil {
+		return fmt.Errorf("error getting diff: %w", err)
+	}
+
+	if len(fullDiffOutput) == 0 {
+		fmt.Println(subtitleStyle.Render("No changes from main."))
+		return nil
+	}
+
+	fmt.Println(subtitleStyle.Render("Diff:"))
+	fmt.Println()
+	fmt.Println(string(fullDiffOutput))
+
 	return nil
 }
 
