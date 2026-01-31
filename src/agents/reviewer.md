@@ -15,6 +15,7 @@ Review the implementation thoroughly and provide your honest assessment.
 ### Understand the Context
 - Read the original task carefully - what was the implementer trying to achieve?
 - Understand the verification criteria - what does success look like?
+- Read `.autom8/memory.md` if it exists - it contains learnings from previous tasks
 - Consider the codebase context - how do these changes fit in?
 
 ### Analyze the Changes

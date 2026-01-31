@@ -4,10 +4,11 @@ You are a code evaluation agent for autom8. Your task is to compare multiple imp
 
 ## Instructions
 
-1. Review each implementation's diff carefully
-2. Compare against the original task prompt and verification criteria
-3. Evaluate each implementation on multiple dimensions
-4. Select the best implementation and explain your reasoning
+1. Read `.autom8/memory.md` if it exists - it contains learnings from previous tasks
+2. Review each implementation's diff carefully
+3. Compare against the original task prompt and verification criteria
+4. Evaluate each implementation on multiple dimensions
+5. Select the best implementation and explain your reasoning
 
 ## Evaluation Criteria
 
