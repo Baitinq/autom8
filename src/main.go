@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/charmbracelet/huh"
@@ -18,6 +19,7 @@ import (
 const (
 	autom8Dir = ".autom8"
 	tasksFile = "tasks.json"
+	pidsFile  = "pids.json"
 )
 
 // Styles for terminal output
@@ -95,19 +97,27 @@ With flags, creates the task directly (non-interactive mode).`,
 }
 
 var implementCmd = &cobra.Command{
-	Use:   "implement",
-	Short: "Implement all pending tasks using AI",
-	Long: `Launch Claude AI agents to implement all pending tasks.
+	Use:   "implement [task-id]",
+	Short: "Implement pending tasks using AI",
+	Long: `Launch Claude AI agents to implement pending tasks.
+
+If a task ID is provided, only that task will be implemented.
+Otherwise, all pending tasks will be implemented.
 
 Each agent runs in an isolated git worktree, allowing multiple parallel
 implementations without conflicts. For dependent tasks, the branching
 is exponential - each instance of a dependent task branches from each
 instance of its parent task.`,
-	Example: `  # Single implementation per task
+	Example: `  # Implement all pending tasks
   autom8 implement
 
-  # Multiple parallel implementations (useful for exploring solutions)
-  autom8 implement -n 3`,
+  # Implement a specific task
+  autom8 implement task-123456789
+
+  # Multiple parallel implementations
+  autom8 implement -n 3
+  autom8 implement task-123456789 -n 3`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runImplement,
 }
 
@@ -307,6 +317,62 @@ func saveTasks(tasks []Task) error {
 	return os.WriteFile(tasksPath, data, 0644)
 }
 
+// PID tracking for worktrees
+func loadPids() (map[string]int, error) {
+	dir, err := getAutom8Dir()
+	if err != nil {
+		return make(map[string]int), nil
+	}
+
+	pidsPath := filepath.Join(dir, pidsFile)
+	data, err := os.ReadFile(pidsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return make(map[string]int), nil
+		}
+		return nil, err
+	}
+
+	var pids map[string]int
+	if err := json.Unmarshal(data, &pids); err != nil {
+		return make(map[string]int), nil
+	}
+	return pids, nil
+}
+
+func savePids(pids map[string]int) error {
+	dir, err := ensureAutom8Dir()
+	if err != nil {
+		return err
+	}
+
+	pidsPath := filepath.Join(dir, pidsFile)
+	data, err := json.MarshalIndent(pids, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(pidsPath, data, 0644)
+}
+
+func savePid(worktreeName string, pid int) {
+	pids, _ := loadPids()
+	pids[worktreeName] = pid
+	savePids(pids)
+}
+
+func isProcessRunning(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	// On Unix, FindProcess always succeeds, so we need to send signal 0 to check
+	err = process.Signal(syscall.Signal(0))
+	return err == nil
+}
+
 func runFeature(cmd *cobra.Command, args []string) error {
 	// Check git repo first
 	if _, err := getGitRoot(); err != nil {
@@ -430,7 +496,7 @@ type WorktreeInfo struct {
 	IsRunning    bool
 }
 
-func getWorktreeInfo(worktreesDir, worktreeName string) WorktreeInfo {
+func getWorktreeInfo(worktreesDir, worktreeName string, pids map[string]int) WorktreeInfo {
 	worktreePath := filepath.Join(worktreesDir, worktreeName)
 	info := WorktreeInfo{
 		Name: worktreeName,
@@ -459,10 +525,10 @@ func getWorktreeInfo(worktreesDir, worktreeName string) WorktreeInfo {
 		info.CommitsAhead = "0"
 	}
 
-	// Check if there are any running processes in the worktree
-	processCmd := exec.Command("pgrep", "-f", worktreePath)
-	_, err := processCmd.Output()
-	info.IsRunning = err == nil
+	// Check if the tracked process is still running
+	if pid, ok := pids[worktreeName]; ok {
+		info.IsRunning = isProcessRunning(pid)
+	}
 
 	return info
 }
@@ -477,10 +543,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
-	// Get worktrees
+	// Get worktrees and PIDs
 	autom8Path, _ := getAutom8Dir()
 	worktreesDir := filepath.Join(autom8Path, "worktrees")
 	worktreesByTask := make(map[string][]WorktreeInfo)
+	pids, _ := loadPids()
 
 	if entries, err := os.ReadDir(worktreesDir); err == nil {
 		for _, entry := range entries {
@@ -493,7 +560,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
 				taskID = worktreeName[:lastDash]
 			}
-			info := getWorktreeInfo(worktreesDir, worktreeName)
+			info := getWorktreeInfo(worktreesDir, worktreeName, pids)
 			worktreesByTask[taskID] = append(worktreesByTask[taskID], info)
 		}
 	}
@@ -799,6 +866,12 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		numInstances = 1
 	}
 
+	// Check if a specific task ID was provided
+	var targetTaskID string
+	if len(args) > 0 {
+		targetTaskID = args[0]
+	}
+
 	tasks, err := loadTasks()
 	if err != nil {
 		return fmt.Errorf("error loading tasks: %w", err)
@@ -809,12 +882,25 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Filter pending tasks
+	// Filter tasks to implement
 	var pendingTasks []Task
 	for _, task := range tasks {
-		if task.Status == "pending" {
+		// If a specific task ID was provided, only include that task
+		if targetTaskID != "" {
+			if task.ID == targetTaskID {
+				if task.Status == "completed" {
+					return fmt.Errorf("task '%s' is already completed", targetTaskID)
+				}
+				pendingTasks = append(pendingTasks, task)
+				break
+			}
+		} else if task.Status == "pending" {
 			pendingTasks = append(pendingTasks, task)
 		}
+	}
+
+	if targetTaskID != "" && len(pendingTasks) == 0 {
+		return fmt.Errorf("task '%s' not found", targetTaskID)
 	}
 
 	if len(pendingTasks) == 0 {
@@ -983,6 +1069,9 @@ func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suf
 	if err := claudeCmd.Start(); err != nil {
 		return fmt.Sprintf("  %s %s: failed to start claude: %v", errorStyle.Render("[error]"), instanceID, err)
 	}
+
+	// Save the PID for tracking
+	savePid(instanceID, claudeCmd.Process.Pid)
 
 	baseInfo := "HEAD"
 	if baseBranchID != "" {
