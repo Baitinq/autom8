@@ -35,18 +35,13 @@ autom8/
 
 ### Task
 
-The fundamental data structure. Defined in `src/main.go`:
-
-```go
-type Task struct {
-    ID                   string    // Unique: "task-<unix-nano>"
-    Prompt               string    // Implementation instruction
-    VerificationCriteria []string  // Success criteria
-    DependsOn            string    // Optional parent task ID
-    CreatedAt            time.Time
-    Status               string    // "pending" | "in-progress" | "completed"
-}
-```
+The fundamental data structure (defined in `src/main.go`) containing:
+- **ID** - Unique identifier (`task-<unix-nano>`)
+- **Prompt** - Implementation instruction
+- **VerificationCriteria** - List of success criteria
+- **DependsOn** - Optional parent task ID
+- **CreatedAt** - Timestamp
+- **Status** - `pending`, `in-progress`, or `completed`
 
 ### Worktrees
 
@@ -81,21 +76,14 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 
 ## Code Organization
 
-All logic is in `src/main.go` (~520 lines). Key sections:
+All logic is in `src/main.go`. Key functions:
 
-| Lines | Function | Purpose |
-|-------|----------|---------|
-| 1-50 | Imports & types | Task struct, global vars |
-| 51-150 | `main()` | CLI argument parsing, command dispatch |
-| 151-270 | `handleFeature()` | Task creation (interactive & flags) |
-| 271-370 | `handleList()` | Task listing and formatting |
-| 371-520 | `handleImplement()` | Worktree creation, parallel execution |
-
-### Critical Functions
-
+- `main()` - CLI argument parsing and command dispatch
+- `handleFeature()` - Task creation (interactive & flag-based)
+- `handleList()` - Task listing and formatting
+- `handleImplement()` - Worktree creation, parallel execution
 - `loadTasks()` / `saveTasks()` - JSON persistence to `.autom8/tasks.json`
 - `createWorktreeAndRun()` - Creates worktree, spawns Claude CLI
-- `handleImplement()` - Orchestrates parallel execution with goroutines
 
 ## Dependencies
 
@@ -157,20 +145,20 @@ User reviews/merges via standard git
 
 ### Adding a new command
 
-1. Add case in `main()` switch statement (~line 70)
+1. Add case in `main()` switch statement
 2. Create `handleNewCommand()` function
 3. Update help text in default case
 
 ### Modifying Task structure
 
-1. Update `Task` struct definition (~line 20)
+1. Update `Task` struct definition
 2. Ensure backward compatibility with existing `tasks.json`
 3. Update `handleFeature()` for new fields
 4. Update `handleList()` display
 
 ### Changing Claude invocation
 
-Look for `exec.Command("claude", ...)` in `createWorktreeAndRun()` (~line 480)
+Look for `exec.Command("claude", ...)` in `createWorktreeAndRun()`
 
 ## Testing Considerations
 
