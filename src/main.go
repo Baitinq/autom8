@@ -886,7 +886,8 @@ func runInspect(cmd *cobra.Command, args []string) error {
 
 	// Get worktree info for display
 	worktreesDir := filepath.Join(autom8Path, "worktrees")
-	info := getWorktreeInfo(worktreesDir, worktreeName)
+	pids, _ := loadPids()
+	info := getWorktreeInfo(worktreesDir, worktreeName, pids)
 
 	fmt.Println(titleStyle.Render("Inspecting Worktree"))
 	fmt.Println()
