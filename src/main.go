@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,11 +9,49 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/cobra"
 )
 
 const (
 	autom8Dir = ".autom8"
 	tasksFile = "tasks.json"
+)
+
+// Styles for terminal output
+var (
+	titleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("205"))
+
+	subtitleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
+
+	successStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("42"))
+
+	errorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196"))
+
+	statusPendingStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("214")).
+				Bold(true)
+
+	statusInProgressStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("33")).
+				Bold(true)
+
+	statusCompletedStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("42")).
+				Bold(true)
+
+	idStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245"))
+
+	highlightStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("99"))
 )
 
 type Task struct {
@@ -27,38 +63,148 @@ type Task struct {
 	Status               string    `json:"status"`
 }
 
+var rootCmd = &cobra.Command{
+	Use:   "autom8",
+	Short: "Automate AI agent workflows",
+	Long: `autom8 is a CLI tool that orchestrates AI-driven development workflows.
+
+It enables you to:
+  - Define implementation tasks with verification criteria
+  - Manage task dependencies
+  - Run multiple Claude AI agents in parallel
+  - Isolate each agent's work in separate git worktrees`,
+	SilenceUsage: true,
+}
+
+var featureCmd = &cobra.Command{
+	Use:   "feature",
+	Short: "Create a new task/prompt",
+	Long: `Create a new task with a prompt and optional verification criteria.
+
+Without flags, starts an interactive mode to guide you through task creation.
+With flags, creates the task directly (non-interactive mode).`,
+	Example: `  # Interactive mode
+  autom8 feature
+
+  # Non-interactive mode
+  autom8 feature -p "Add login page" -c "Has email field" -c "Has password field"
+
+  # With dependency
+  autom8 feature -p "Add logout button" -d task-123456789`,
+	RunE: runFeature,
+}
+
+var listCmd = &cobra.Command{
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List all saved tasks",
+	Long:    `Display all tasks with their status, prompts, and verification criteria.`,
+	RunE:    runList,
+}
+
+var implementCmd = &cobra.Command{
+	Use:   "implement",
+	Short: "Implement all pending tasks using AI",
+	Long: `Launch Claude AI agents to implement all pending tasks.
+
+Each agent runs in an isolated git worktree, allowing multiple parallel
+implementations without conflicts. For dependent tasks, the branching
+is exponential - each instance of a dependent task branches from each
+instance of its parent task.`,
+	Example: `  # Single implementation per task
+  autom8 implement
+
+  # Multiple parallel implementations (useful for exploring solutions)
+  autom8 implement -n 3`,
+	RunE: runImplement,
+}
+
+var statusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show status of active worktrees and implementations",
+	Long:  `Display the status of all active worktrees including branch info, commit status, and whether AI is still working.`,
+	RunE:  runStatus,
+}
+
+var completionCmd = &cobra.Command{
+	Use:   "completion [bash|zsh|fish|powershell]",
+	Short: "Generate shell completion scripts",
+	Long: `Generate completion scripts for your shell.
+
+To load completions:
+
+Bash:
+  $ source <(autom8 completion bash)
+  # To load completions for each session, execute once:
+  # Linux:
+  $ autom8 completion bash > /etc/bash_completion.d/autom8
+  # macOS:
+  $ autom8 completion bash > $(brew --prefix)/etc/bash_completion.d/autom8
+
+Zsh:
+  # If shell completion is not already enabled in your environment,
+  # you will need to enable it. You can execute the following once:
+  $ echo "autoload -U compinit; compinit" >> ~/.zshrc
+
+  # To load completions for each session, execute once:
+  $ autom8 completion zsh > "${fpath[1]}/_autom8"
+
+Fish:
+  $ autom8 completion fish | source
+  # To load completions for each session, execute once:
+  $ autom8 completion fish > ~/.config/fish/completions/autom8.fish
+
+PowerShell:
+  PS> autom8 completion powershell | Out-String | Invoke-Expression
+  # To load completions for every new session, run:
+  PS> autom8 completion powershell > autom8.ps1
+  # and source this file from your PowerShell profile.
+`,
+	DisableFlagsInUseLine: true,
+	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
+	Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		switch args[0] {
+		case "bash":
+			return rootCmd.GenBashCompletion(os.Stdout)
+		case "zsh":
+			return rootCmd.GenZshCompletion(os.Stdout)
+		case "fish":
+			return rootCmd.GenFishCompletion(os.Stdout, true)
+		case "powershell":
+			return rootCmd.GenPowerShellCompletionWithDesc(os.Stdout)
+		default:
+			return fmt.Errorf("unknown shell: %s", args[0])
+		}
+	},
+}
+
+// Flags
+var (
+	promptFlag    string
+	criteriaFlags []string
+	dependsOnFlag string
+	numInstances  int
+)
+
+func init() {
+	rootCmd.AddCommand(featureCmd)
+	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(implementCmd)
+	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(completionCmd)
+
+	// Feature command flags
+	featureCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "Task prompt (non-interactive mode)")
+	featureCmd.Flags().StringArrayVarP(&criteriaFlags, "criteria", "c", []string{}, "Verification criteria (can be specified multiple times)")
+	featureCmd.Flags().StringVarP(&dependsOnFlag, "depends-on", "d", "", "Task ID this depends on")
+
+	// Implement command flags
+	implementCmd.Flags().IntVarP(&numInstances, "instances", "n", 1, "Number of parallel instances per task")
+}
+
 func main() {
-	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
-	}
-
-	command := os.Args[1]
-
-	// Help doesn't require git repo
-	if command == "help" || command == "-h" || command == "--help" {
-		printUsage()
-		return
-	}
-
-	// All other commands require git repo
-	if _, err := getGitRoot(); err != nil {
-		fmt.Println("Error: must be run inside a git repository")
-		os.Exit(1)
-	}
-
-	switch command {
-	case "feature":
-		runFeature()
-	case "implement":
-		runImplement()
-	case "list":
-		runList()
-	case "status":
-		runStatus()
-	default:
-		fmt.Printf("Unknown command: %s\n", command)
-		printUsage()
+	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
@@ -67,35 +213,9 @@ func getGitRoot() (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
 	output, err := cmd.Output()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("must be run inside a git repository")
 	}
 	return strings.TrimSpace(string(output)), nil
-}
-
-func printUsage() {
-	fmt.Println("autom8 - Automate AI agent workflows")
-	fmt.Println()
-	fmt.Println("Usage:")
-	fmt.Println("  autom8 <command> [options]")
-	fmt.Println()
-	fmt.Println("Commands:")
-	fmt.Println("  feature    Create a new task/prompt")
-	fmt.Println("             -p <prompt>    Task prompt (non-interactive)")
-	fmt.Println("             -c <criteria>  Verification criteria (repeatable)")
-	fmt.Println("             -d <task-id>   Depends on another task")
-	fmt.Println("  list       List all saved tasks")
-	fmt.Println("  implement  Implement all pending tasks using AI")
-	fmt.Println("             -n <num>       Number of parallel instances per task (default: 1)")
-	fmt.Println("             Creates git worktrees in .autom8/worktrees/")
-	fmt.Println("             Dependent tasks branch from their dependency (exponential)")
-	fmt.Println("  status     Show status of active worktrees and implementations")
-	fmt.Println("  help       Show this help message")
-	fmt.Println()
-	fmt.Println("Examples:")
-	fmt.Println("  autom8 feature -p \"Add login page\" -c \"Has email field\"")
-	fmt.Println("  autom8 feature -p \"Add logout\" -d task-123  # depends on task-123")
-	fmt.Println("  autom8 list")
-	fmt.Println("  autom8 implement")
 }
 
 func getAutom8Dir() (string, error) {
@@ -159,102 +279,82 @@ func saveTasks(tasks []Task) error {
 	return os.WriteFile(tasksPath, data, 0644)
 }
 
-func readMultilineInput(reader *bufio.Reader) string {
-	var lines []string
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			break
-		}
-
-		line = strings.TrimRight(line, "\r\n")
-
-		if line == "" {
-			break
-		}
-		lines = append(lines, line)
+func runFeature(cmd *cobra.Command, args []string) error {
+	// Check git repo first
+	if _, err := getGitRoot(); err != nil {
+		return err
 	}
-
-	return strings.Join(lines, "\n")
-}
-
-type arrayFlags []string
-
-func (a *arrayFlags) String() string {
-	return strings.Join(*a, ", ")
-}
-
-func (a *arrayFlags) Set(value string) error {
-	*a = append(*a, value)
-	return nil
-}
-
-func runFeature() {
-	featureCmd := flag.NewFlagSet("feature", flag.ExitOnError)
-	promptFlag := featureCmd.String("p", "", "Task prompt (non-interactive mode)")
-	dependsOnFlag := featureCmd.String("d", "", "Task ID this depends on")
-	var criteriaFlags arrayFlags
-	featureCmd.Var(&criteriaFlags, "c", "Verification criteria (can be specified multiple times)")
-
-	featureCmd.Parse(os.Args[2:])
 
 	var prompt string
 	var criteria []string
 	var dependsOn string
 
-	if *promptFlag != "" {
+	if promptFlag != "" {
 		// Non-interactive mode
-		prompt = *promptFlag
+		prompt = promptFlag
 		criteria = criteriaFlags
-		dependsOn = *dependsOnFlag
+		dependsOn = dependsOnFlag
 	} else {
-		// Interactive mode
-		reader := bufio.NewReader(os.Stdin)
+		// Interactive mode with huh
+		var criteriaInput string
 
-		fmt.Println("Enter your task/prompt (press Enter to finish):")
-		fmt.Println()
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewText().
+					Title("Task Prompt").
+					Description("What should the AI implement?").
+					Placeholder("Add a login page with email and password fields...").
+					Value(&prompt).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return fmt.Errorf("prompt cannot be empty")
+						}
+						return nil
+					}),
+			),
+			huh.NewGroup(
+				huh.NewText().
+					Title("Verification Criteria").
+					Description("How should success be verified? (one per line, optional)").
+					Placeholder("Has email field\nHas password field\nValidates input").
+					Value(&criteriaInput),
+			),
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Depends On").
+					Description("Task ID this depends on (optional)").
+					Placeholder("task-123456789").
+					Value(&dependsOn),
+			),
+		).WithTheme(huh.ThemeDracula())
 
-		prompt = readMultilineInput(reader)
-
-		if strings.TrimSpace(prompt) == "" {
-			fmt.Println("No prompt entered. Aborting.")
-			return
+		err := form.Run()
+		if err != nil {
+			if err == huh.ErrUserAborted {
+				fmt.Println("\nAborted.")
+				return nil
+			}
+			return err
 		}
 
-		fmt.Println()
-		fmt.Println("Enter verification criteria (one per line, empty line to finish):")
-		fmt.Println()
-
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				break
+		// Parse criteria from multiline input
+		if strings.TrimSpace(criteriaInput) != "" {
+			for _, line := range strings.Split(criteriaInput, "\n") {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					criteria = append(criteria, line)
+				}
 			}
-
-			line = strings.TrimRight(line, "\r\n")
-
-			if line == "" {
-				break
-			}
-			criteria = append(criteria, line)
 		}
-
-		fmt.Println()
-		fmt.Print("Depends on task ID (leave empty if none): ")
-		depLine, _ := reader.ReadString('\n')
-		dependsOn = strings.TrimSpace(depLine)
 	}
 
 	if strings.TrimSpace(prompt) == "" {
-		fmt.Println("No prompt provided. Aborting.")
-		return
+		return fmt.Errorf("no prompt provided")
 	}
 
 	tasks, err := loadTasks()
 	if err != nil {
-		fmt.Printf("Error loading tasks: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
 	// Validate dependency exists if specified
@@ -267,8 +367,7 @@ func runFeature() {
 			}
 		}
 		if !found {
-			fmt.Printf("Error: dependency task '%s' not found\n", dependsOn)
-			os.Exit(1)
+			return fmt.Errorf("dependency task '%s' not found", dependsOn)
 		}
 	}
 
@@ -284,79 +383,95 @@ func runFeature() {
 	tasks = append(tasks, task)
 
 	if err := saveTasks(tasks); err != nil {
-		fmt.Printf("Error saving task: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error saving task: %w", err)
 	}
 
 	fmt.Println()
-	fmt.Printf("Task saved with ID: %s\n", task.ID)
+	fmt.Println(successStyle.Render("Task created successfully!"))
+	fmt.Printf("  %s %s\n", subtitleStyle.Render("ID:"), idStyle.Render(task.ID))
+	return nil
 }
 
-func runList() {
+func runList(cmd *cobra.Command, args []string) error {
+	// Check git repo first
+	if _, err := getGitRoot(); err != nil {
+		return err
+	}
+
 	tasks, err := loadTasks()
 	if err != nil {
-		fmt.Printf("Error loading tasks: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
 	if len(tasks) == 0 {
-		fmt.Println("No tasks found. Use 'autom8 feature' to create one.")
-		return
+		fmt.Println(subtitleStyle.Render("No tasks found. Use 'autom8 feature' to create one."))
+		return nil
 	}
 
-	fmt.Printf("Found %d task(s):\n\n", len(tasks))
+	fmt.Println(titleStyle.Render(fmt.Sprintf("Tasks (%d)", len(tasks))))
+	fmt.Println()
 
 	for i, task := range tasks {
-		fmt.Printf("%d. [%s] %s\n", i+1, task.Status, truncate(task.Prompt, 60))
-		fmt.Printf("   ID: %s\n", task.ID)
-		fmt.Printf("   Created: %s\n", task.CreatedAt.Format("2006-01-02 15:04:05"))
-		if task.DependsOn != "" {
-			fmt.Printf("   Depends on: %s\n", task.DependsOn)
+		// Status badge
+		var statusBadge string
+		switch task.Status {
+		case "pending":
+			statusBadge = statusPendingStyle.Render("[pending]")
+		case "in-progress":
+			statusBadge = statusInProgressStyle.Render("[in-progress]")
+		case "completed":
+			statusBadge = statusCompletedStyle.Render("[completed]")
+		default:
+			statusBadge = subtitleStyle.Render(fmt.Sprintf("[%s]", task.Status))
 		}
+
+		fmt.Printf("%d. %s %s\n", i+1, statusBadge, truncate(task.Prompt, 60))
+		fmt.Printf("   %s %s\n", subtitleStyle.Render("ID:"), idStyle.Render(task.ID))
+		fmt.Printf("   %s %s\n", subtitleStyle.Render("Created:"), task.CreatedAt.Format("2006-01-02 15:04:05"))
+
+		if task.DependsOn != "" {
+			fmt.Printf("   %s %s\n", subtitleStyle.Render("Depends on:"), highlightStyle.Render(task.DependsOn))
+		}
+
 		if len(task.VerificationCriteria) > 0 {
-			fmt.Println("   Verification criteria:")
+			fmt.Printf("   %s\n", subtitleStyle.Render("Verification criteria:"))
 			for _, c := range task.VerificationCriteria {
 				fmt.Printf("     - %s\n", c)
 			}
 		}
 		fmt.Println()
 	}
+
+	return nil
 }
 
-func runStatus() {
+func runStatus(cmd *cobra.Command, args []string) error {
 	autom8Path, err := getAutom8Dir()
 	if err != nil {
-		fmt.Printf("Error getting autom8 dir: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	worktreesDir := filepath.Join(autom8Path, "worktrees")
 
 	// Check if worktrees directory exists
 	if _, err := os.Stat(worktreesDir); os.IsNotExist(err) {
-		fmt.Println("No worktrees found. Use 'autom8 implement' to create implementations.")
-		return
+		fmt.Println(subtitleStyle.Render("No worktrees found. Use 'autom8 implement' to create implementations."))
+		return nil
 	}
 
 	// List all worktree directories
 	entries, err := os.ReadDir(worktreesDir)
 	if err != nil {
-		fmt.Printf("Error reading worktrees dir: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error reading worktrees dir: %w", err)
 	}
 
 	if len(entries) == 0 {
-		fmt.Println("No worktrees found. Use 'autom8 implement' to create implementations.")
-		return
+		fmt.Println(subtitleStyle.Render("No worktrees found. Use 'autom8 implement' to create implementations."))
+		return nil
 	}
 
-	fmt.Printf("Found %d worktree(s):\n\n", len(entries))
-
-	gitRoot, err := getGitRoot()
-	if err != nil {
-		fmt.Printf("Error getting git root: %v\n", err)
-		os.Exit(1)
-	}
+	fmt.Println(titleStyle.Render(fmt.Sprintf("Worktrees (%d)", len(entries))))
+	fmt.Println()
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -365,16 +480,6 @@ func runStatus() {
 
 		worktreeName := entry.Name()
 		worktreePath := filepath.Join(worktreesDir, worktreeName)
-
-		// Extract task ID from worktree name (remove suffix)
-		taskID := worktreeName
-		if idx := strings.LastIndex(worktreeName, "-"); idx > 0 {
-			// Keep the full name for display, but try to extract base task ID
-			baseTaskID := worktreeName[:strings.Index(worktreeName, "-")]
-			if strings.HasPrefix(baseTaskID, "task-") {
-				taskID = baseTaskID
-			}
-		}
 
 		// Check if there are any git changes
 		statusCmd := exec.Command("git", "-C", worktreePath, "status", "--porcelain")
@@ -398,56 +503,54 @@ func runStatus() {
 		}
 
 		// Check if there are any running processes in the worktree
-		// This is a simple check - look for claude processes
 		processCmd := exec.Command("pgrep", "-f", worktreePath)
 		_, err = processCmd.Output()
 		isRunning := err == nil
 
-		status := "idle"
+		// Determine status
+		var statusText string
 		if isRunning {
-			status = "running"
+			statusText = statusInProgressStyle.Render("[running]")
 		} else if hasChanges {
-			status = "modified"
+			statusText = statusPendingStyle.Render("[modified]")
 		} else if commitsAhead != "0" {
-			status = "committed"
+			statusText = statusCompletedStyle.Render("[committed]")
+		} else {
+			statusText = subtitleStyle.Render("[idle]")
 		}
 
-		fmt.Printf("📁 %s\n", worktreeName)
-		fmt.Printf("   Status: %s", status)
-		if isRunning {
-			fmt.Printf(" (AI working)")
-		}
-		fmt.Println()
-		fmt.Printf("   Branch: %s\n", branchName)
-		fmt.Printf("   Commits ahead: %s\n", commitsAhead)
+		fmt.Printf("%s %s\n", statusText, worktreeName)
+		fmt.Printf("   %s %s\n", subtitleStyle.Render("Branch:"), highlightStyle.Render(branchName))
+		fmt.Printf("   %s %s\n", subtitleStyle.Render("Commits ahead:"), commitsAhead)
 		if hasChanges {
-			fmt.Printf("   Uncommitted changes: yes\n")
+			fmt.Printf("   %s %s\n", subtitleStyle.Render("Uncommitted:"), "yes")
 		}
-		fmt.Printf("   Path: %s\n", worktreePath)
+		fmt.Printf("   %s %s\n", subtitleStyle.Render("Path:"), idStyle.Render(worktreePath))
 		fmt.Println()
 	}
 
-	fmt.Println("💡 Tip: cd into a worktree to see detailed changes with 'git status' and 'git log'")
+	fmt.Println(subtitleStyle.Render("Tip: cd into a worktree to see detailed changes with 'git status' and 'git log'"))
+	return nil
 }
 
-func runImplement() {
-	implementCmd := flag.NewFlagSet("implement", flag.ExitOnError)
-	numInstances := implementCmd.Int("n", 1, "Number of parallel instances per task")
-	implementCmd.Parse(os.Args[2:])
+func runImplement(cmd *cobra.Command, args []string) error {
+	// Check git repo first
+	if _, err := getGitRoot(); err != nil {
+		return err
+	}
 
-	if *numInstances < 1 {
-		*numInstances = 1
+	if numInstances < 1 {
+		numInstances = 1
 	}
 
 	tasks, err := loadTasks()
 	if err != nil {
-		fmt.Printf("Error loading tasks: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
 	if len(tasks) == 0 {
-		fmt.Println("No tasks found. Use 'autom8 feature' to create one.")
-		return
+		fmt.Println(subtitleStyle.Render("No tasks found. Use 'autom8 feature' to create one."))
+		return nil
 	}
 
 	// Filter pending tasks
@@ -459,26 +562,23 @@ func runImplement() {
 	}
 
 	if len(pendingTasks) == 0 {
-		fmt.Println("No pending tasks to implement.")
-		return
+		fmt.Println(subtitleStyle.Render("No pending tasks to implement."))
+		return nil
 	}
 
 	gitRoot, err := getGitRoot()
 	if err != nil {
-		fmt.Printf("Error getting git root: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	autom8Path, err := ensureAutom8Dir()
 	if err != nil {
-		fmt.Printf("Error ensuring autom8 dir: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error ensuring autom8 dir: %w", err)
 	}
 
 	worktreesDir := filepath.Join(autom8Path, "worktrees")
 	if err := os.MkdirAll(worktreesDir, 0755); err != nil {
-		fmt.Printf("Error creating worktrees dir: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error creating worktrees dir: %w", err)
 	}
 
 	// Build task map for dependency lookup
@@ -499,26 +599,30 @@ func runImplement() {
 	}
 
 	// Calculate total instances (exponential for dependencies)
-	totalIndependent := len(independentTasks) * *numInstances
-	totalDependent := len(dependentTasks) * *numInstances * *numInstances // Each dependent branches from each instance
+	totalIndependent := len(independentTasks) * numInstances
+	totalDependent := len(dependentTasks) * numInstances * numInstances
 
-	fmt.Printf("Implementing with %d instance(s) per task...\n", *numInstances)
-	fmt.Printf("  Independent: %d task(s) x %d = %d worktrees\n", len(independentTasks), *numInstances, totalIndependent)
+	fmt.Println(titleStyle.Render("Starting Implementation"))
+	fmt.Println()
+	fmt.Printf("  %s %d\n", subtitleStyle.Render("Instances per task:"), numInstances)
+	fmt.Printf("  %s %d task(s) x %d = %d worktrees\n",
+		subtitleStyle.Render("Independent:"), len(independentTasks), numInstances, totalIndependent)
 	if len(dependentTasks) > 0 {
-		fmt.Printf("  Dependent: %d task(s) x %d^2 = %d worktrees (exponential)\n", len(dependentTasks), *numInstances, totalDependent)
+		fmt.Printf("  %s %d task(s) x %d^2 = %d worktrees (exponential)\n",
+			subtitleStyle.Render("Dependent:"), len(dependentTasks), numInstances, totalDependent)
 	}
 	fmt.Println()
 
 	var wg sync.WaitGroup
 	results := make(chan string, totalIndependent+totalDependent)
 
-	// Track created branches for independent tasks (so dependents can branch from them)
-	independentBranches := make(map[string][]string) // taskID -> list of branch suffixes
+	// Track created branches for independent tasks
+	independentBranches := make(map[string][]string)
 
-	// Start independent tasks in parallel (n instances each)
+	// Start independent tasks in parallel
 	for _, task := range independentTasks {
-		independentBranches[task.ID] = make([]string, *numInstances)
-		for i := 0; i < *numInstances; i++ {
+		independentBranches[task.ID] = make([]string, numInstances)
+		for i := 0; i < numInstances; i++ {
 			suffix := fmt.Sprintf("-%d", i+1)
 			independentBranches[task.ID][i] = suffix
 			wg.Add(1)
@@ -530,19 +634,18 @@ func runImplement() {
 		}
 	}
 
-	// Start dependent tasks (branch from each instance of dependency)
+	// Start dependent tasks
 	for _, task := range dependentTasks {
 		depSuffixes := independentBranches[task.DependsOn]
 		if depSuffixes == nil {
-			// Dependency might also be dependent, just use default suffixes
-			depSuffixes = make([]string, *numInstances)
-			for i := 0; i < *numInstances; i++ {
+			depSuffixes = make([]string, numInstances)
+			for i := 0; i < numInstances; i++ {
 				depSuffixes[i] = fmt.Sprintf("-%d", i+1)
 			}
 		}
 
 		for _, depSuffix := range depSuffixes {
-			for i := 0; i < *numInstances; i++ {
+			for i := 0; i < numInstances; i++ {
 				suffix := fmt.Sprintf("%s-%d", depSuffix, i+1)
 				wg.Add(1)
 				go func(t Task, ds, s string) {
@@ -555,45 +658,44 @@ func runImplement() {
 		}
 	}
 
-	// Wait for all tasks to complete
+	// Wait and collect results
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
 
-	// Print results as they come in
 	for result := range results {
 		fmt.Println(result)
 	}
 
-	fmt.Println("\nAll tasks started. Check worktrees for progress.")
+	fmt.Println()
+	fmt.Println(successStyle.Render("All tasks started!"))
+	fmt.Println(subtitleStyle.Render("Use 'autom8 status' to check progress."))
+	return nil
 }
 
 func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suffix string) string {
 	instanceID := task.ID + suffix
 	worktreePath := filepath.Join(worktreesDir, instanceID)
 
-	// Create branch name from task ID + suffix
 	branchName := fmt.Sprintf("autom8/%s", instanceID)
 
 	// Check if worktree already exists
 	if _, err := os.Stat(worktreePath); err == nil {
-		return fmt.Sprintf("[%s] Worktree already exists at %s", instanceID, worktreePath)
+		return fmt.Sprintf("  %s %s (already exists)", subtitleStyle.Render("[skip]"), instanceID)
 	}
 
 	// Determine base branch
 	var cmd *exec.Cmd
 	if baseBranchID != "" {
-		// Branch from dependency's branch
 		baseBranch := fmt.Sprintf("autom8/%s", baseBranchID)
 		cmd = exec.Command("git", "-C", gitRoot, "worktree", "add", "-b", branchName, worktreePath, baseBranch)
 	} else {
-		// Branch from current HEAD
 		cmd = exec.Command("git", "-C", gitRoot, "worktree", "add", "-b", branchName, worktreePath)
 	}
 
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Sprintf("[%s] Error creating worktree: %v\n%s", instanceID, err, string(output))
+		return fmt.Sprintf("  %s %s: %v\n%s", errorStyle.Render("[error]"), instanceID, err, string(output))
 	}
 
 	// Build the prompt with verification criteria
@@ -609,16 +711,16 @@ func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suf
 	claudeCmd := exec.Command("claude", "-p", prompt, "--dangerously-skip-permissions")
 	claudeCmd.Dir = worktreePath
 
-	// Start claude in background (don't wait for it)
 	if err := claudeCmd.Start(); err != nil {
-		return fmt.Sprintf("[%s] Error starting claude: %v", instanceID, err)
+		return fmt.Sprintf("  %s %s: failed to start claude: %v", errorStyle.Render("[error]"), instanceID, err)
 	}
 
 	baseInfo := "HEAD"
 	if baseBranchID != "" {
 		baseInfo = fmt.Sprintf("autom8/%s", baseBranchID)
 	}
-	return fmt.Sprintf("[%s] Started implementation in %s (branch: %s, base: %s)", instanceID, worktreePath, branchName, baseInfo)
+	return fmt.Sprintf("  %s %s (branch: %s, base: %s)",
+		successStyle.Render("[started]"), instanceID, highlightStyle.Render(branchName), idStyle.Render(baseInfo))
 }
 
 func truncate(s string, maxLen int) string {
