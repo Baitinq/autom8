@@ -1110,6 +1110,7 @@ func runShow(cmd *cobra.Command, args []string) error {
 	pids, _ := loadPids()
 	info := getWorktreeInfo(worktreesDir, worktreeName, pids)
 
+	// Print header info directly to stdout
 	fmt.Println(titleStyle.Render(fmt.Sprintf("Diff: main...%s", info.Branch)))
 	fmt.Println()
 	fmt.Printf("  %s %s\n", subtitleStyle.Render("Worktree:"), highlightStyle.Render(worktreeName))
@@ -1140,7 +1141,53 @@ func runShow(cmd *cobra.Command, args []string) error {
 
 	fmt.Println(subtitleStyle.Render("Diff:"))
 	fmt.Println()
-	fmt.Println(string(fullDiffOutput))
+
+	// Pipe the full diff through less for scrollable viewing
+	// Fall back to direct print if less is unavailable
+	if err := pipeToLess(fullDiffOutput); err != nil {
+		// Fallback: print directly to stdout
+		fmt.Println(string(fullDiffOutput))
+	}
+
+	return nil
+}
+
+// pipeToLess pipes the given content through the less pager for scrollable viewing.
+// Returns an error if less is unavailable or fails to run.
+func pipeToLess(content []byte) error {
+	// Check if less is available
+	lessPath, err := exec.LookPath("less")
+	if err != nil {
+		return fmt.Errorf("less not found: %w", err)
+	}
+
+	// Create the less command with options for color support
+	lessCmd := exec.Command(lessPath, "-R")
+	lessCmd.Stdout = os.Stdout
+	lessCmd.Stderr = os.Stderr
+
+	// Get stdin pipe to write content
+	stdin, err := lessCmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+
+	// Start less
+	if err := lessCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start less: %w", err)
+	}
+
+	// Write content to less stdin
+	stdin.Write(content)
+	stdin.Close()
+
+	// Wait for less to finish (user quits with 'q')
+	if err := lessCmd.Wait(); err != nil {
+		// Ignore exit errors from less (e.g., user pressing 'q')
+		if _, ok := err.(*exec.ExitError); !ok {
+			return fmt.Errorf("less failed: %w", err)
+		}
+	}
 
 	return nil
 }
