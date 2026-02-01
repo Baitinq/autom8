@@ -24,6 +24,7 @@ const (
 var (
 	numInstances  int
 	maxIterations int
+	addMode       bool
 )
 
 var ImplementCmd = &cobra.Command{
@@ -49,7 +50,10 @@ immediately. Use 'autom8 status' to monitor progress.`,
 
   # Multiple parallel implementations
   autom8 implement -n 3
-  autom8 implement my-task -n 3`,
+  autom8 implement my-task -n 3
+
+  # Add more implementations to an existing task
+  autom8 implement my-task -n 2 --add`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runImplement,
 }
@@ -57,6 +61,7 @@ immediately. Use 'autom8 status' to monitor progress.`,
 func init() {
 	ImplementCmd.Flags().IntVarP(&numInstances, "instances", "n", 1, "Number of parallel instances per task")
 	ImplementCmd.Flags().IntVarP(&maxIterations, "max-iterations", "m", 0, "Maximum iterations per worktree (0 = unlimited)")
+	ImplementCmd.Flags().BoolVar(&addMode, "add", false, "Add more implementations to an existing task (allows ready/in-progress tasks)")
 }
 
 func loadAgentTemplate(name string) (string, error) {
@@ -65,6 +70,51 @@ func loadAgentTemplate(name string) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// findHighestInstanceNumber scans the worktrees directory to find the highest instance number
+// for a given task ID. Returns 0 if no instances exist.
+func findHighestInstanceNumber(worktreesDir, taskID string) int {
+	entries, err := os.ReadDir(worktreesDir)
+	if err != nil {
+		return 0
+	}
+
+	maxInstance := 0
+	prefix := taskID + "-"
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+
+		// Extract instance number from the suffix (e.g., "my-task-3" -> 3)
+		suffix := strings.TrimPrefix(name, prefix)
+		// Handle simple case: just a number (e.g., "3")
+		if num, err := strconv.Atoi(suffix); err == nil {
+			if num > maxInstance {
+				maxInstance = num
+			}
+			continue
+		}
+		// Handle dependent case: first number before another dash (e.g., "2-1" means instance 2)
+		// This is for dependent tasks that have suffixes like "-1-2" (parent instance - child instance)
+		// We want the first number after the task ID
+		parts := strings.SplitN(suffix, "-", 2)
+		if len(parts) > 0 {
+			if num, err := strconv.Atoi(parts[0]); err == nil {
+				if num > maxInstance {
+					maxInstance = num
+				}
+			}
+		}
+	}
+
+	return maxInstance
 }
 
 func runImplement(cmd *cobra.Command, args []string) error {
@@ -103,7 +153,12 @@ func runImplement(cmd *cobra.Command, args []string) error {
 					return fmt.Errorf("task '%s' is already completed", targetTaskID)
 				}
 				if task.Status == "ready" {
-					return fmt.Errorf("task '%s' is already ready (use 'autom8 converge' or 'autom8 accept')", targetTaskID)
+					if !addMode {
+						return fmt.Errorf("task '%s' is already ready (use 'autom8 converge' or 'autom8 accept', or use --add to add more implementations)", targetTaskID)
+					}
+					// In add mode, allow ready tasks
+				} else if task.Status == "in-progress" && !addMode {
+					// For in-progress without --add, it's allowed (continue existing behavior)
 				}
 				pendingTasks = append(pendingTasks, task)
 				break
@@ -160,7 +215,11 @@ func runImplement(cmd *cobra.Command, args []string) error {
 
 	fmt.Println(TitleStyle.Render("Starting Implementation"))
 	fmt.Println()
-	fmt.Printf("  %s %d\n", SubtitleStyle.Render("Instances per task:"), numInstances)
+	if addMode {
+		fmt.Printf("  %s adding %d more implementation(s)\n", SubtitleStyle.Render("Mode:"), numInstances)
+	} else {
+		fmt.Printf("  %s %d\n", SubtitleStyle.Render("Instances per task:"), numInstances)
+	}
 	fmt.Printf("  %s %d task(s) x %d = %d worktrees\n",
 		SubtitleStyle.Render("Independent:"), len(independentTasks), numInstances, totalIndependent)
 	if len(dependentTasks) > 0 {
@@ -170,10 +229,18 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Mark all pending tasks as in-progress before starting
+	// In add mode for ready tasks, also clear the Winner field
 	for i, t := range tasks {
 		for _, pt := range pendingTasks {
 			if t.ID == pt.ID {
-				tasks[i].Status = "in-progress"
+				if addMode && t.Status == "ready" {
+					// Reset ready task to in-progress and clear winner
+					tasks[i].Status = "in-progress"
+					tasks[i].Winner = ""
+				} else if t.Status == "pending" {
+					tasks[i].Status = "in-progress"
+				}
+				// For in-progress tasks, no change needed
 				break
 			}
 		}
@@ -196,9 +263,17 @@ func runImplement(cmd *cobra.Command, args []string) error {
 
 	// Start independent tasks
 	for _, task := range independentTasks {
+		// Determine starting instance number
+		startInstance := 1
+		if addMode {
+			maxExisting := findHighestInstanceNumber(worktreesDir, task.ID)
+			startInstance = maxExisting + 1
+		}
+
 		independentBranches[task.ID] = make([]string, numInstances)
 		for i := 0; i < numInstances; i++ {
-			suffix := fmt.Sprintf("-%d", i+1)
+			instanceNum := startInstance + i
+			suffix := fmt.Sprintf("-%d", instanceNum)
 			independentBranches[task.ID][i] = suffix
 			result := spawnWorkerForTask(task, gitRoot, worktreesDir, "", suffix, exePath, maxIterations)
 			spawnedWorkers = append(spawnedWorkers, result)
