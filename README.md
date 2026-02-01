@@ -51,6 +51,15 @@ autom8 implement -n 3
 
 Each task gets its own git worktree in `.autom8/worktrees/`. Tasks with dependencies branch from their dependency's branch.
 
+### Worktree status
+
+Use `autom8 status` or `autom8 describe <task>` to see worktree states:
+
+- **[implementing (N)]** / **[reviewing]** - Agent is actively working
+- **[ready]** - Complete, can run `autom8 accept <worktree>` to merge
+- **[error]** - Stopped in incomplete state (needs manual intervention)
+- **[idle]** - No active work
+
 With `-n 3`, you get exponential branching:
 - 2 independent tasks = 6 worktrees
 - 1 dependent task = 9 worktrees (3 instances per each of 3 parent instances)
