@@ -188,9 +188,10 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 			return fmt.Errorf("failed to build review prompt: %w", err)
 		}
 
-		// Run codex exec with the review prompt
-		codexCmd := exec.Command("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", reviewPrompt)
+		// Run codex exec with the review prompt via stdin to avoid argv length limits
+		codexCmd := exec.Command("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-")
 		codexCmd.Dir = worktreePath
+		codexCmd.Stdin = strings.NewReader(reviewPrompt)
 
 		output, err := codexCmd.CombinedOutput()
 		if err != nil {
@@ -201,6 +202,11 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 
 		// Write output to log file
 		os.WriteFile(reviewLogFile, output, 0644)
+
+		// Check if review is blocked (reviewer found issues that require reimplementation)
+		if strings.Contains(string(output), "REVIEW BLOCKED") {
+			return fmt.Errorf("review blocked in iteration %d", reviewIteration)
+		}
 
 		// Check if review is complete (reviewer either found no issues or applied all fixes)
 		if strings.Contains(string(output), "REVIEW COMPLETE") {
