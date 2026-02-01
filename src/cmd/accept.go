@@ -111,14 +111,9 @@ func runAccept(cmd *cobra.Command, args []string) error {
 		// Extract task ID from worktree name using proper matching
 		// This handles both independent ({task-name}-{instance}) and
 		// dependent ({task-name}-{parent-instance}-{instance}) worktree names
-		taskID, ok := core.BaseTaskIDFromWorktree(worktreeName, taskIDs)
-		if !ok {
-			// Fallback: try simple last-dash removal for backwards compatibility
-			taskID = worktreeName
-			if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
-				taskID = worktreeName[:lastDash]
-			}
-		}
+		// BaseTaskIDFromWorktree returns (taskID, true) on exact match, or
+		// (baseID, false) with all numeric suffixes stripped as fallback
+		taskID, _ := core.BaseTaskIDFromWorktree(worktreeName, taskIDs)
 
 		for i, t := range tasks {
 			if t.ID == taskID {

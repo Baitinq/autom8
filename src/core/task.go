@@ -152,6 +152,11 @@ func Truncate(s string, maxLen int) string {
 //
 // This function iterates through the name parts and matches against known task IDs
 // to correctly identify the task even for dependent tasks with multiple numeric suffixes.
+//
+// Returns (taskID, true) if a matching task ID is found, or
+// (baseID, false) if no match but a valid base ID can be computed by stripping
+// all trailing numeric suffixes. This fallback ensures dependent worktrees are
+// never misidentified as parent task instances.
 func BaseTaskIDFromWorktree(name string, taskIDs map[string]struct{}) (string, bool) {
 	parts := strings.Split(name, "-")
 	if len(parts) < 2 {
@@ -161,16 +166,26 @@ func BaseTaskIDFromWorktree(name string, taskIDs map[string]struct{}) (string, b
 	if _, err := strconv.Atoi(parts[len(parts)-1]); err != nil {
 		return "", false
 	}
-	// Try to match task IDs by progressively removing numeric suffixes
+	// Find the index where numeric suffixes end (going right to left)
+	firstNumericIdx := len(parts)
 	for i := len(parts) - 1; i >= 1; i-- {
 		if _, err := strconv.Atoi(parts[i]); err != nil {
-			// Hit a non-numeric part, stop iterating
+			// Hit a non-numeric part, stop
 			break
 		}
+		firstNumericIdx = i
+	}
+	// Try to match task IDs by progressively removing numeric suffixes
+	for i := len(parts) - 1; i >= firstNumericIdx; i-- {
 		candidate := strings.Join(parts[:i], "-")
 		if _, ok := taskIDs[candidate]; ok {
 			return candidate, true
 		}
+	}
+	// No match found - return the base name with all numeric suffixes stripped
+	// This prevents dependent worktrees from being misidentified as parent instances
+	if firstNumericIdx > 0 {
+		return strings.Join(parts[:firstNumericIdx], "-"), false
 	}
 	return "", false
 }
