@@ -62,6 +62,12 @@ func runConverge(cmd *cobra.Command, args []string) error {
 		targetTaskID = args[0]
 	}
 
+	// Build task ID set for worktree matching
+	taskIDs := make(map[string]struct{})
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
+	}
+
 	// Get worktrees directory
 	autom8Path, _ := core.GetAutom8Dir()
 	worktreesDir := filepath.Join(autom8Path, "worktrees")
@@ -75,10 +81,14 @@ func runConverge(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			worktreeName := entry.Name()
-			// Extract task ID: {task-name}-{instance} -> {task-name}
-			taskID := worktreeName
-			if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
-				taskID = worktreeName[:lastDash]
+			// Extract task ID from worktree name using proper matching
+			taskID, ok := core.BaseTaskIDFromWorktree(worktreeName, taskIDs)
+			if !ok {
+				// Fallback: try simple last-dash removal for backwards compatibility
+				taskID = worktreeName
+				if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
+					taskID = worktreeName[:lastDash]
+				}
 			}
 			info := core.GetWorktreeInfo(worktreesDir, worktreeName, pids)
 			worktreesByTask[taskID] = append(worktreesByTask[taskID], info)
@@ -370,9 +380,20 @@ func doAccept(worktreeName, gitRoot, autom8Path string, tasks []core.Task) error
 	deleteBranchCmd.Run()
 
 	// Mark the task as completed
-	taskID := worktreeName
-	if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
-		taskID = worktreeName[:lastDash]
+	// Build task ID set for worktree name matching
+	taskIDs := make(map[string]struct{})
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
+	}
+
+	// Extract task ID from worktree name using proper matching
+	taskID, ok := core.BaseTaskIDFromWorktree(worktreeName, taskIDs)
+	if !ok {
+		// Fallback: try simple last-dash removal for backwards compatibility
+		taskID = worktreeName
+		if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
+			taskID = worktreeName[:lastDash]
+		}
 	}
 
 	for i, t := range tasks {

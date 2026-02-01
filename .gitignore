@@ -5,6 +5,7 @@
 .autom8/*
 !.autom8/tasks.json
 !.autom8/memory.md
+.autom8-notes.md
 
 # Editor
 .idea/
