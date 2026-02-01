@@ -117,6 +117,67 @@ func findHighestInstanceNumber(worktreesDir, taskID string) int {
 	return maxInstance
 }
 
+func findParentSuffixes(worktreesDir, taskID string) []string {
+	entries, err := os.ReadDir(worktreesDir)
+	if err != nil {
+		return nil
+	}
+
+	prefix := taskID + "-"
+	suffixes := []string{}
+	seen := make(map[string]struct{})
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		suffix := strings.TrimPrefix(name, taskID)
+		if suffix == "" {
+			continue
+		}
+		if _, ok := seen[suffix]; ok {
+			continue
+		}
+		seen[suffix] = struct{}{}
+		suffixes = append(suffixes, suffix)
+	}
+
+	return suffixes
+}
+
+func findHighestChildInstance(worktreesDir, taskID, depSuffix string) int {
+	entries, err := os.ReadDir(worktreesDir)
+	if err != nil {
+		return 0
+	}
+
+	maxInstance := 0
+	prefix := taskID + depSuffix + "-"
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		childSuffix := strings.TrimPrefix(name, prefix)
+		parts := strings.SplitN(childSuffix, "-", 2)
+		if num, err := strconv.Atoi(parts[0]); err == nil {
+			if num > maxInstance {
+				maxInstance = num
+			}
+		}
+	}
+
+	return maxInstance
+}
+
 func runImplement(cmd *cobra.Command, args []string) error {
 	// Check git repo first
 	if _, err := core.GetGitRoot(); err != nil {
@@ -284,15 +345,26 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	for _, task := range dependentTasks {
 		depSuffixes := independentBranches[task.DependsOn]
 		if depSuffixes == nil {
-			depSuffixes = make([]string, numInstances)
-			for i := 0; i < numInstances; i++ {
-				depSuffixes[i] = fmt.Sprintf("-%d", i+1)
+			if addMode {
+				depSuffixes = findParentSuffixes(worktreesDir, task.DependsOn)
+			}
+			if len(depSuffixes) == 0 {
+				depSuffixes = make([]string, numInstances)
+				for i := 0; i < numInstances; i++ {
+					depSuffixes[i] = fmt.Sprintf("-%d", i+1)
+				}
 			}
 		}
 
 		for _, depSuffix := range depSuffixes {
+			startInstance := 1
+			if addMode {
+				maxExisting := findHighestChildInstance(worktreesDir, task.ID, depSuffix)
+				startInstance = maxExisting + 1
+			}
 			for i := 0; i < numInstances; i++ {
-				suffix := fmt.Sprintf("%s-%d", depSuffix, i+1)
+				instanceNum := startInstance + i
+				suffix := fmt.Sprintf("%s-%d", depSuffix, instanceNum)
 				baseBranch := fmt.Sprintf("%s%s", task.DependsOn, depSuffix)
 				result := spawnWorkerForTask(task, gitRoot, worktreesDir, baseBranch, suffix, exePath, maxIterations)
 				spawnedWorkers = append(spawnedWorkers, result)
