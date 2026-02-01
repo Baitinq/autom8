@@ -77,18 +77,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
-	var task core.Task
-	found := false
-	for _, t := range tasks {
-		if t.ID == workerTaskID {
-			task = t
-			found = true
-			break
-		}
-	}
-	if !found {
+	taskIndex := core.FindTaskIndex(tasks, workerTaskID)
+	if taskIndex == -1 {
 		return fmt.Errorf("task not found: %s", workerTaskID)
 	}
+	task := tasks[taskIndex]
 
 	// Load the implementer agent template
 	agentTemplate, err := loadAgentTemplate("implementer")
@@ -122,7 +115,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 		// Write status: implementing with iteration count
 		implStatus := &core.WorktreeStatus{
-			Status:    "implementing",
+			Status:    core.WorktreePhaseImplementing,
 			Iteration: iteration,
 		}
 		core.WriteWorktreeStatus(worktreeName, implStatus)
@@ -154,7 +147,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 			// Mark this worktree as ready by writing status file
 			status := &core.WorktreeStatus{
-				Status:      "ready",
+				Status:      core.WorktreePhaseReady,
 				CompletedAt: time.Now(),
 			}
 			if err := core.WriteWorktreeStatus(worktreeName, status); err != nil {
@@ -180,7 +173,7 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 
 		// Write status: reviewing with fix iteration count
 		reviewStatus := &core.WorktreeStatus{
-			Status:       "reviewing",
+			Status:       core.WorktreePhaseReviewing,
 			FixIteration: fixIteration,
 		}
 		core.WriteWorktreeStatus(worktreeName, reviewStatus)
@@ -213,7 +206,7 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 
 		// Update status to reflect current fix iteration
 		fixStatus := &core.WorktreeStatus{
-			Status:       "reviewing",
+			Status:       core.WorktreePhaseReviewing,
 			FixIteration: fixIteration,
 		}
 		core.WriteWorktreeStatus(worktreeName, fixStatus)

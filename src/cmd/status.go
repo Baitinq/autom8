@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/baitinq/autom8/src/core"
@@ -62,25 +60,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get worktrees and PIDs
-	autom8Path, _ := core.GetAutom8Dir()
-	worktreesDir := filepath.Join(autom8Path, "worktrees")
-	worktreesByTask := make(map[string][]core.WorktreeInfo)
-	pids, _ := core.LoadPids()
-
-	if entries, err := os.ReadDir(worktreesDir); err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			worktreeName := entry.Name()
-			// Extract task ID from worktree name using proper matching
-			// BaseTaskIDFromWorktree returns (taskID, true) on exact match, or
-			// (baseID, false) with all numeric suffixes stripped as fallback
-			taskID, _ := core.BaseTaskIDFromWorktree(worktreeName, taskIDs)
-			info := core.GetWorktreeInfo(worktreesDir, worktreeName, pids)
-			worktreesByTask[taskID] = append(worktreesByTask[taskID], info)
-		}
+	worktreesDir, err := core.GetWorktreesDir()
+	if err != nil {
+		return err
 	}
+	pids, _ := core.LoadPids()
+	worktreesByTask := core.ListWorktreesByTask(worktreesDir, taskIDs, pids)
 
 	fmt.Println(TitleStyle.Render("Status"))
 	fmt.Println()
@@ -100,17 +85,17 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			childPrefix = prefix + "    "
 		}
 
-		// Status badge (tasks only use pending/in-progress/completed, not ready)
+		// Status badge
 		var statusBadge string
 		switch task.Status {
-		case "pending":
+		case core.TaskStatusPending:
 			statusBadge = StatusPendingStyle.Render("[pending]")
-		case "in-progress":
+		case core.TaskStatusInProgress:
 			statusBadge = StatusInProgressStyle.Render("[in-progress]")
-		case "completed":
+		case core.TaskStatusCompleted:
 			statusBadge = StatusCompletedStyle.Render("[completed]")
 		default:
-			statusBadge = SubtitleStyle.Render(fmt.Sprintf("[%s]", task.Status))
+			statusBadge = SubtitleStyle.Render(fmt.Sprintf("[%s]", string(task.Status)))
 		}
 
 		// Print task header: name at top, prompt below
@@ -150,9 +135,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 				// Worktree status
 				var wtStatus string
-				if wt.IsRunning && wt.Phase == "implementing" {
+				if wt.IsRunning && wt.Phase == core.WorktreePhaseImplementing {
 					wtStatus = StatusInProgressStyle.Render(fmt.Sprintf("[implementing (%d)]", wt.Iteration))
-				} else if wt.IsRunning && wt.Phase == "reviewing" {
+				} else if wt.IsRunning && wt.Phase == core.WorktreePhaseReviewing {
 					if wt.FixIteration > 0 {
 						wtStatus = StatusInProgressStyle.Render(fmt.Sprintf("[reviewing (fix %d)]", wt.FixIteration))
 					} else {
@@ -163,7 +148,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 					wtStatus = StatusInProgressStyle.Render("[running]")
 				} else if wt.HasChanges {
 					wtStatus = StatusPendingStyle.Render("[modified]")
-				} else if wt.Ready {
+				} else if wt.Phase == core.WorktreePhaseReady {
 					wtStatus = StatusReadyStyle.Render("[ready]")
 				} else if wt.CommitsAhead != "0" {
 					wtStatus = StatusCompletedStyle.Render("[" + wt.CommitsAhead + " commits]")
@@ -174,7 +159,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				fmt.Printf("%s%s%s %s\n", childPrefix, wtBranch, wtStatus, wt.Name)
 
 				// Show accept hint
-				if !wt.IsRunning && (wt.Ready || wt.CommitsAhead != "0" || wt.HasChanges) {
+				if !wt.IsRunning && (wt.Phase == core.WorktreePhaseReady || wt.CommitsAhead != "0" || wt.HasChanges) {
 					wtChildPrefix := childPrefix + "│   "
 					if wtIsLast {
 						wtChildPrefix = childPrefix + "    "
@@ -182,7 +167,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 					fmt.Printf("%s%s autom8 accept %s\n", wtChildPrefix, HighlightStyle.Render("→"), wt.Name)
 				}
 			}
-		} else if task.Status == "pending" && len(children) == 0 {
+		} else if task.Status == core.TaskStatusPending && len(children) == 0 {
 			fmt.Printf("%s%s\n", childPrefix, SubtitleStyle.Render("(no worktrees - run 'autom8 implement')"))
 		}
 

@@ -69,26 +69,15 @@ func runConverge(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get worktrees directory
-	autom8Path, _ := core.GetAutom8Dir()
+	autom8Path, err := core.GetAutom8Dir()
+	if err != nil {
+		return err
+	}
 	worktreesDir := filepath.Join(autom8Path, "worktrees")
 	pids, _ := core.LoadPids()
 
 	// Build map of task ID -> worktrees
-	worktreesByTask := make(map[string][]core.WorktreeInfo)
-	if entries, err := os.ReadDir(worktreesDir); err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			worktreeName := entry.Name()
-			// Extract task ID from worktree name using proper matching
-			// BaseTaskIDFromWorktree returns (taskID, true) on exact match, or
-			// (baseID, false) with all numeric suffixes stripped as fallback
-			taskID, _ := core.BaseTaskIDFromWorktree(worktreeName, taskIDs)
-			info := core.GetWorktreeInfo(worktreesDir, worktreeName, pids)
-			worktreesByTask[taskID] = append(worktreesByTask[taskID], info)
-		}
-	}
+	worktreesByTask := core.ListWorktreesByTask(worktreesDir, taskIDs, pids)
 
 	// Filter tasks to converge
 	var tasksToConverge []core.Task
@@ -382,13 +371,14 @@ func doAccept(worktreeName, gitRoot, autom8Path string, tasks []core.Task) error
 	}
 
 	// Extract task ID from worktree name using proper matching
-	// BaseTaskIDFromWorktree returns (taskID, true) on exact match, or
-	// (baseID, false) with all numeric suffixes stripped as fallback
-	taskID, _ := core.BaseTaskIDFromWorktree(worktreeName, taskIDs)
+	taskID, ok := core.TaskIDFromWorktree(worktreeName, taskIDs)
+	if !ok {
+		return nil
+	}
 
 	for i, t := range tasks {
 		if t.ID == taskID {
-			tasks[i].Status = "completed"
+			tasks[i].Status = core.TaskStatusCompleted
 			break
 		}
 	}

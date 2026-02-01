@@ -61,7 +61,7 @@ immediately. Use 'autom8 status' to monitor progress.`,
 func init() {
 	ImplementCmd.Flags().IntVarP(&numInstances, "instances", "n", 1, "Number of parallel instances per task")
 	ImplementCmd.Flags().IntVarP(&maxIterations, "max-iterations", "m", 0, "Maximum iterations per worktree (0 = unlimited)")
-	ImplementCmd.Flags().BoolVar(&addMode, "add", false, "Add more implementations to an existing task (allows ready/in-progress tasks)")
+	ImplementCmd.Flags().BoolVar(&addMode, "add", false, "Add more implementations to an existing task (allows in-progress tasks)")
 }
 
 func loadAgentTemplate(name string) (string, error) {
@@ -74,7 +74,7 @@ func loadAgentTemplate(name string) (string, error) {
 
 // findHighestInstanceNumber scans the worktrees directory to find the highest instance number
 // for a given task ID. Returns 0 if no instances exist.
-func findHighestInstanceNumber(worktreesDir, taskID string) int {
+func findHighestInstanceNumber(worktreesDir, taskID string, taskIDs map[string]struct{}) int {
 	entries, err := os.ReadDir(worktreesDir)
 	if err != nil {
 		return 0
@@ -88,28 +88,23 @@ func findHighestInstanceNumber(worktreesDir, taskID string) int {
 			continue
 		}
 		name := entry.Name()
+		baseID, ok := core.BaseTaskIDFromWorktree(name, taskIDs)
+		if !ok || baseID != taskID {
+			continue
+		}
 		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
 
 		// Extract instance number from the suffix (e.g., "my-task-3" -> 3)
 		suffix := strings.TrimPrefix(name, prefix)
-		// Handle simple case: just a number (e.g., "3")
-		if num, err := strconv.Atoi(suffix); err == nil {
-			if num > maxInstance {
-				maxInstance = num
-			}
+		parts := strings.SplitN(suffix, "-", 2)
+		if len(parts) == 0 {
 			continue
 		}
-		// Handle dependent case: first number before another dash (e.g., "2-1" means instance 2)
-		// This is for dependent tasks that have suffixes like "-1-2" (parent instance - child instance)
-		// We want the first number after the task ID
-		parts := strings.SplitN(suffix, "-", 2)
-		if len(parts) > 0 {
-			if num, err := strconv.Atoi(parts[0]); err == nil {
-				if num > maxInstance {
-					maxInstance = num
-				}
+		if num, err := strconv.Atoi(parts[0]); err == nil {
+			if num > maxInstance {
+				maxInstance = num
 			}
 		}
 	}
@@ -161,7 +156,7 @@ func findParentSuffixes(worktreesDir, taskID string, taskIDs map[string]struct{}
 	return suffixes
 }
 
-func findHighestChildInstance(worktreesDir, taskID, depSuffix string) int {
+func findHighestChildInstance(worktreesDir, taskID, depSuffix string, taskIDs map[string]struct{}) int {
 	entries, err := os.ReadDir(worktreesDir)
 	if err != nil {
 		return 0
@@ -175,6 +170,10 @@ func findHighestChildInstance(worktreesDir, taskID, depSuffix string) int {
 			continue
 		}
 		name := entry.Name()
+		baseID, ok := core.BaseTaskIDFromWorktree(name, taskIDs)
+		if !ok || baseID != taskID {
+			continue
+		}
 		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
@@ -192,7 +191,8 @@ func findHighestChildInstance(worktreesDir, taskID, depSuffix string) int {
 
 func runImplement(cmd *cobra.Command, args []string) error {
 	// Check git repo first
-	if _, err := core.GetGitRoot(); err != nil {
+	gitRoot, err := core.GetGitRoot()
+	if err != nil {
 		return err
 	}
 
@@ -222,21 +222,16 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		// If a specific task ID was provided, only include that task
 		if targetTaskID != "" {
 			if task.ID == targetTaskID {
-				if task.Status == "completed" {
+				if task.Status == core.TaskStatusCompleted {
 					return fmt.Errorf("task '%s' is already completed", targetTaskID)
 				}
-				if task.Status == "ready" {
-					if !addMode {
-						return fmt.Errorf("task '%s' is already ready (use 'autom8 converge' or 'autom8 accept', or use --add to add more implementations)", targetTaskID)
-					}
-					// In add mode, allow ready tasks
-				} else if task.Status == "in-progress" && !addMode {
+				if task.Status == core.TaskStatusInProgress && !addMode {
 					// For in-progress without --add, it's allowed (continue existing behavior)
 				}
 				pendingTasks = append(pendingTasks, task)
 				break
 			}
-		} else if task.Status == "pending" {
+		} else if task.Status == core.TaskStatusPending {
 			pendingTasks = append(pendingTasks, task)
 		}
 	}
@@ -248,11 +243,6 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	if len(pendingTasks) == 0 {
 		fmt.Println(SubtitleStyle.Render("No pending tasks to implement."))
 		return nil
-	}
-
-	gitRoot, err := core.GetGitRoot()
-	if err != nil {
-		return err
 	}
 
 	autom8Path, err := core.EnsureAutom8Dir()
@@ -306,16 +296,11 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Mark all pending tasks as in-progress before starting
-	// In add mode for ready tasks, also clear the Winner field
 	for i, t := range tasks {
 		for _, pt := range pendingTasks {
 			if t.ID == pt.ID {
-				if addMode && t.Status == "ready" {
-					// Reset ready task to in-progress and clear winner
-					tasks[i].Status = "in-progress"
-					tasks[i].Winner = ""
-				} else if t.Status == "pending" {
-					tasks[i].Status = "in-progress"
+				if t.Status == core.TaskStatusPending {
+					tasks[i].Status = core.TaskStatusInProgress
 				}
 				// For in-progress tasks, no change needed
 				break
@@ -343,7 +328,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		// Determine starting instance number
 		startInstance := 1
 		if addMode {
-			maxExisting := findHighestInstanceNumber(worktreesDir, task.ID)
+			maxExisting := findHighestInstanceNumber(worktreesDir, task.ID, taskIDs)
 			startInstance = maxExisting + 1
 		}
 
@@ -375,7 +360,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		for _, depSuffix := range depSuffixes {
 			startInstance := 1
 			if addMode {
-				maxExisting := findHighestChildInstance(worktreesDir, task.ID, depSuffix)
+				maxExisting := findHighestChildInstance(worktreesDir, task.ID, depSuffix, taskIDs)
 				startInstance = maxExisting + 1
 			}
 			for i := 0; i < numInstances; i++ {

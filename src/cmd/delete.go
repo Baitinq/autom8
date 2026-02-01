@@ -41,15 +41,12 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
-	// Find the task
-	taskIndex := -1
-	for i, t := range tasks {
-		if t.ID == taskID {
-			taskIndex = i
-			break
-		}
+	taskIDs := make(map[string]struct{}, len(tasks))
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
 	}
 
+	taskIndex := core.FindTaskIndex(tasks, taskID)
 	if taskIndex == -1 {
 		return fmt.Errorf("task '%s' not found\nRun 'autom8 list' to see task names", taskID)
 	}
@@ -72,8 +69,10 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Clean up associated worktrees
-	autom8Path, _ := core.GetAutom8Dir()
-	worktreesDir := filepath.Join(autom8Path, "worktrees")
+	worktreesDir, err := core.GetWorktreesDir()
+	if err != nil {
+		return err
+	}
 	var worktreesRemoved int
 
 	if entries, err := os.ReadDir(worktreesDir); err == nil {
@@ -82,23 +81,24 @@ func runDelete(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			worktreeName := entry.Name()
-			// Check if worktree belongs to this task ({task-name}-{instance})
-			if strings.HasPrefix(worktreeName, taskID+"-") {
-				worktreePath := filepath.Join(worktreesDir, worktreeName)
-				// Get branch name before removing
-				branchCmd := exec.Command("git", "-C", worktreePath, "branch", "--show-current")
-				branchOutput, _ := branchCmd.Output()
-				branchName := strings.TrimSpace(string(branchOutput))
+			worktreeTaskID, ok := core.TaskIDFromWorktree(worktreeName, taskIDs)
+			if !ok || worktreeTaskID != taskID {
+				continue
+			}
+			worktreePath := filepath.Join(worktreesDir, worktreeName)
+			// Get branch name before removing
+			branchCmd := exec.Command("git", "-C", worktreePath, "branch", "--show-current")
+			branchOutput, _ := branchCmd.Output()
+			branchName := strings.TrimSpace(string(branchOutput))
 
-				// Remove worktree
-				removeCmd := exec.Command("git", "-C", gitRoot, "worktree", "remove", "--force", worktreePath)
-				if removeCmd.Run() == nil {
-					worktreesRemoved++
-					// Delete the branch
-					if branchName != "" {
-						deleteBranchCmd := exec.Command("git", "-C", gitRoot, "branch", "-D", branchName)
-						deleteBranchCmd.Run()
-					}
+			// Remove worktree
+			removeCmd := exec.Command("git", "-C", gitRoot, "worktree", "remove", "--force", worktreePath)
+			if removeCmd.Run() == nil {
+				worktreesRemoved++
+				// Delete the branch
+				if branchName != "" {
+					deleteBranchCmd := exec.Command("git", "-C", gitRoot, "branch", "-D", branchName)
+					deleteBranchCmd.Run()
 				}
 			}
 		}

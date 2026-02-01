@@ -183,7 +183,7 @@ func runFeature(cmd *cobra.Command, args []string) error {
 		VerificationCriteria: criteria,
 		DependsOn:            dependsOn,
 		CreatedAt:            time.Now(),
-		Status:               "pending",
+		Status:               core.TaskStatusPending,
 	}
 
 	tasks := append(existingTasks, task)

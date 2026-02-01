@@ -111,19 +111,20 @@ func runAccept(cmd *cobra.Command, args []string) error {
 		// Extract task ID from worktree name using proper matching
 		// This handles both independent ({task-name}-{instance}) and
 		// dependent ({task-name}-{parent-instance}-{instance}) worktree names
-		// BaseTaskIDFromWorktree returns (taskID, true) on exact match, or
-		// (baseID, false) with all numeric suffixes stripped as fallback
-		taskID, _ := core.BaseTaskIDFromWorktree(worktreeName, taskIDs)
-
-		for i, t := range tasks {
-			if t.ID == taskID {
-				tasks[i].Status = "completed"
-				if err := core.SaveTasks(tasks); err != nil {
-					fmt.Printf("%s could not save task status: %v\n", ErrorStyle.Render("Warning:"), err)
-				} else {
-					fmt.Printf("Marked task '%s' as completed.\n", taskID)
+		taskID, ok := core.TaskIDFromWorktree(worktreeName, taskIDs)
+		if !ok {
+			fmt.Printf("%s could not resolve task ID for worktree '%s'\n", ErrorStyle.Render("Warning:"), worktreeName)
+		} else {
+			for i, t := range tasks {
+				if t.ID == taskID {
+					tasks[i].Status = core.TaskStatusCompleted
+					if err := core.SaveTasks(tasks); err != nil {
+						fmt.Printf("%s could not save task status: %v\n", ErrorStyle.Render("Warning:"), err)
+					} else {
+						fmt.Printf("Marked task '%s' as completed.\n", taskID)
+					}
+					break
 				}
-				break
 			}
 		}
 	}

@@ -19,13 +19,30 @@ const (
 )
 
 type Task struct {
-	ID                   string    `json:"id"`
-	Prompt               string    `json:"prompt"`
-	VerificationCriteria []string  `json:"verification_criteria"`
-	DependsOn            string    `json:"depends_on,omitempty"`
-	CreatedAt            time.Time `json:"created_at"`
-	Status               string    `json:"status"`
-	Winner               string    `json:"winner,omitempty"` // Winning worktree name from converge
+	ID                   string     `json:"id"`
+	Prompt               string     `json:"prompt"`
+	VerificationCriteria []string   `json:"verification_criteria"`
+	DependsOn            string     `json:"depends_on,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
+	Status               TaskStatus `json:"status"`
+	Winner               string     `json:"winner,omitempty"` // Winning worktree name from converge
+}
+
+type TaskStatus string
+
+const (
+	TaskStatusPending    TaskStatus = "pending"
+	TaskStatusInProgress TaskStatus = "in-progress"
+	TaskStatusCompleted  TaskStatus = "completed"
+)
+
+func FindTaskIndex(tasks []Task, id string) int {
+	for i := range tasks {
+		if tasks[i].ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 func GetGitRoot() (string, error) {
@@ -153,10 +170,7 @@ func Truncate(s string, maxLen int) string {
 // This function iterates through the name parts and matches against known task IDs
 // to correctly identify the task even for dependent tasks with multiple numeric suffixes.
 //
-// Returns (taskID, true) if a matching task ID is found, or
-// (baseID, false) if no match but a valid base ID can be computed by stripping
-// all trailing numeric suffixes. This fallback ensures dependent worktrees are
-// never misidentified as parent task instances.
+// Returns (taskID, true) if a matching task ID is found, or ("", false) otherwise.
 func BaseTaskIDFromWorktree(name string, taskIDs map[string]struct{}) (string, bool) {
 	parts := strings.Split(name, "-")
 	if len(parts) < 2 {
@@ -166,26 +180,22 @@ func BaseTaskIDFromWorktree(name string, taskIDs map[string]struct{}) (string, b
 	if _, err := strconv.Atoi(parts[len(parts)-1]); err != nil {
 		return "", false
 	}
-	// Find the index where numeric suffixes end (going right to left)
-	firstNumericIdx := len(parts)
+	// Try to match task IDs by progressively removing numeric suffixes.
 	for i := len(parts) - 1; i >= 1; i-- {
 		if _, err := strconv.Atoi(parts[i]); err != nil {
-			// Hit a non-numeric part, stop
+			// Hit a non-numeric part, stop.
 			break
 		}
-		firstNumericIdx = i
-	}
-	// Try to match task IDs by progressively removing numeric suffixes
-	for i := len(parts) - 1; i >= firstNumericIdx; i-- {
 		candidate := strings.Join(parts[:i], "-")
 		if _, ok := taskIDs[candidate]; ok {
 			return candidate, true
 		}
 	}
-	// No match found - return the base name with all numeric suffixes stripped
-	// This prevents dependent worktrees from being misidentified as parent instances
-	if firstNumericIdx > 0 {
-		return strings.Join(parts[:firstNumericIdx], "-"), false
-	}
 	return "", false
+}
+
+// TaskIDFromWorktree resolves the task ID for a worktree name.
+// It returns false when the worktree name doesn't match any known task ID.
+func TaskIDFromWorktree(name string, taskIDs map[string]struct{}) (string, bool) {
+	return BaseTaskIDFromWorktree(name, taskIDs)
 }

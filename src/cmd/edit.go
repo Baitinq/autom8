@@ -60,20 +60,11 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
-	// Find the task
-	var taskIndex int = -1
-	var task *core.Task
-	for i := range tasks {
-		if tasks[i].ID == taskID {
-			taskIndex = i
-			task = &tasks[i]
-			break
-		}
-	}
-
-	if task == nil {
+	taskIndex := core.FindTaskIndex(tasks, taskID)
+	if taskIndex == -1 {
 		return fmt.Errorf("task '%s' not found\nRun 'autom8 status' to see task names", taskID)
 	}
+	task := tasks[taskIndex]
 
 	// Check if any flags were provided for non-interactive mode
 	hasFlags := cmd.Flags().Changed("name") || cmd.Flags().Changed("prompt") || cmd.Flags().Changed("criteria") || cmd.Flags().Changed("depends-on")

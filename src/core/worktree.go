@@ -12,17 +12,26 @@ import (
 )
 
 const (
-	WorkerPidFile     = "worker.pid"
+	WorkerPidFile      = "worker.pid"
 	WorktreeStatusFile = "status.json"
 )
 
 // WorktreeStatus represents the status of a worktree stored in status.json
 type WorktreeStatus struct {
-	Status       string    `json:"status"`                  // "implementing", "reviewing", "ready", "idle"
-	Iteration    int       `json:"iteration,omitempty"`     // Current implementation iteration (1-based)
-	FixIteration int       `json:"fix_iteration,omitempty"` // Current review fix iteration (1-based)
-	CompletedAt  time.Time `json:"completed_at,omitempty"`
+	Status       WorktreePhase `json:"status"`                  // "implementing", "reviewing", "ready", "idle"
+	Iteration    int           `json:"iteration,omitempty"`     // Current implementation iteration (1-based)
+	FixIteration int           `json:"fix_iteration,omitempty"` // Current review fix iteration (1-based)
+	CompletedAt  time.Time     `json:"completed_at,omitempty"`
 }
+
+type WorktreePhase string
+
+const (
+	WorktreePhaseImplementing WorktreePhase = "implementing"
+	WorktreePhaseReviewing    WorktreePhase = "reviewing"
+	WorktreePhaseReady        WorktreePhase = "ready"
+	WorktreePhaseIdle         WorktreePhase = "idle"
+)
 
 // WorktreeInfo holds information about a worktree's status
 type WorktreeInfo struct {
@@ -32,10 +41,9 @@ type WorktreeInfo struct {
 	CommitsAhead string
 	HasChanges   bool
 	IsRunning    bool
-	Ready        bool   // True if this worktree's implementation is complete and reviewed
-	Phase        string // Current phase: "implementing", "reviewing", "ready", "idle"
-	Iteration    int    // Implementation iteration count (when Phase == "implementing")
-	FixIteration int    // Review fix iteration count (when Phase == "reviewing")
+	Phase        WorktreePhase // Current phase: "implementing", "reviewing", "ready", "idle"
+	Iteration    int           // Implementation iteration count (when Phase == "implementing")
+	FixIteration int           // Review fix iteration count (when Phase == "reviewing")
 }
 
 func LoadPids() (map[string]int, error) {
@@ -146,10 +154,41 @@ func GetWorktreeInfo(worktreesDir, worktreeName string, pids map[string]int) Wor
 		info.Phase = status.Status
 		info.Iteration = status.Iteration
 		info.FixIteration = status.FixIteration
-		info.Ready = status.Status == "ready"
 	}
 
 	return info
+}
+
+func GetWorktreesDir() (string, error) {
+	autom8Dir, err := GetAutom8Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(autom8Dir, "worktrees"), nil
+}
+
+// ListWorktreesByTask groups worktrees by task ID.
+func ListWorktreesByTask(worktreesDir string, taskIDs map[string]struct{}, pids map[string]int) map[string][]WorktreeInfo {
+	worktreesByTask := make(map[string][]WorktreeInfo)
+	entries, err := os.ReadDir(worktreesDir)
+	if err != nil {
+		return worktreesByTask
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		worktreeName := entry.Name()
+		taskID, ok := TaskIDFromWorktree(worktreeName, taskIDs)
+		if !ok {
+			continue
+		}
+		info := GetWorktreeInfo(worktreesDir, worktreeName, pids)
+		worktreesByTask[taskID] = append(worktreesByTask[taskID], info)
+	}
+
+	return worktreesByTask
 }
 
 // ReadWorktreeStatus reads the status file for a worktree from .autom8/logs/<worktreeName>/status.json

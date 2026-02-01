@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/baitinq/autom8/src/core"
@@ -40,18 +38,16 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
-	// Find the task
-	var task *core.Task
-	for i := range tasks {
-		if tasks[i].ID == taskID {
-			task = &tasks[i]
-			break
-		}
+	taskIDs := make(map[string]struct{}, len(tasks))
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
 	}
 
-	if task == nil {
+	taskIndex := core.FindTaskIndex(tasks, taskID)
+	if taskIndex == -1 {
 		return fmt.Errorf("task '%s' not found\nRun 'autom8 status' to see task names", taskID)
 	}
+	task := tasks[taskIndex]
 
 	// Build task map for dependency lookup
 	taskMap := make(map[string]core.Task)
@@ -68,28 +64,12 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get worktrees for this task
-	autom8Path, _ := core.GetAutom8Dir()
-	worktreesDir := filepath.Join(autom8Path, "worktrees")
-	var worktrees []core.WorktreeInfo
-	pids, _ := core.LoadPids()
-
-	if entries, err := os.ReadDir(worktreesDir); err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			worktreeName := entry.Name()
-			// Extract task ID: {task-name}-{instance} -> {task-name}
-			wtTaskID := worktreeName
-			if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
-				wtTaskID = worktreeName[:lastDash]
-			}
-			if wtTaskID == taskID {
-				info := core.GetWorktreeInfo(worktreesDir, worktreeName, pids)
-				worktrees = append(worktrees, info)
-			}
-		}
+	worktreesDir, err := core.GetWorktreesDir()
+	if err != nil {
+		return err
 	}
+	pids, _ := core.LoadPids()
+	worktrees := core.ListWorktreesByTask(worktreesDir, taskIDs, pids)[taskID]
 
 	// Display task information
 	fmt.Println(TitleStyle.Render("Task Details"))
@@ -98,14 +78,14 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	// Status badge
 	var statusBadge string
 	switch task.Status {
-	case "pending":
+	case core.TaskStatusPending:
 		statusBadge = StatusPendingStyle.Render("[pending]")
-	case "in-progress":
+	case core.TaskStatusInProgress:
 		statusBadge = StatusInProgressStyle.Render("[in-progress]")
-	case "completed":
+	case core.TaskStatusCompleted:
 		statusBadge = StatusCompletedStyle.Render("[completed]")
 	default:
-		statusBadge = SubtitleStyle.Render(fmt.Sprintf("[%s]", task.Status))
+		statusBadge = SubtitleStyle.Render(fmt.Sprintf("[%s]", string(task.Status)))
 	}
 
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Name:"), IDStyle.Render(task.ID))
@@ -154,6 +134,8 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 			var wtStatus string
 			if wt.IsRunning {
 				wtStatus = StatusInProgressStyle.Render("[running]")
+			} else if wt.Phase == core.WorktreePhaseReady {
+				wtStatus = StatusReadyStyle.Render("[ready]")
 			} else if wt.HasChanges {
 				wtStatus = StatusPendingStyle.Render("[modified]")
 			} else if wt.CommitsAhead != "0" {
@@ -165,7 +147,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 			fmt.Printf("      %s %s\n", SubtitleStyle.Render("Branch:"), HighlightStyle.Render(wt.Branch))
 			fmt.Printf("      %s %s\n", SubtitleStyle.Render("Path:"), wt.Path)
 		}
-	} else if task.Status == "pending" {
+	} else if task.Status == core.TaskStatusPending {
 		fmt.Println(SubtitleStyle.Render("  Worktrees:"))
 		fmt.Println("    (none - run 'autom8 implement' to start)")
 	}

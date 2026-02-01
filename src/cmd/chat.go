@@ -33,22 +33,16 @@ This context is passed to Claude via --system-prompt, allowing you to:
 func runChat(cmd *cobra.Command, args []string) error {
 	worktreeName := args[0]
 
-	autom8Path, err := core.GetAutom8Dir()
+	worktreesDir, err := core.GetWorktreesDir()
 	if err != nil {
-		return fmt.Errorf("error getting autom8 dir: %w", err)
+		return fmt.Errorf("error getting worktrees dir: %w", err)
 	}
 
-	worktreePath := filepath.Join(autom8Path, "worktrees", worktreeName)
+	worktreePath := filepath.Join(worktreesDir, worktreeName)
 
 	// Check if worktree exists
 	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
 		return fmt.Errorf("worktree '%s' not found\nRun 'autom8 status' to see available worktrees", worktreeName)
-	}
-
-	// Extract task ID from worktree name: {task-name}-{instance} -> {task-name}
-	taskID := worktreeName
-	if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
-		taskID = worktreeName[:lastDash]
 	}
 
 	// Load task details
@@ -57,20 +51,23 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
-	var task *core.Task
-	for i := range tasks {
-		if tasks[i].ID == taskID {
-			task = &tasks[i]
-			break
-		}
+	taskIDs := make(map[string]struct{}, len(tasks))
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
 	}
 
-	if task == nil {
+	taskID, ok := core.TaskIDFromWorktree(worktreeName, taskIDs)
+	if !ok {
+		return fmt.Errorf("task not found for worktree '%s'", worktreeName)
+	}
+
+	taskIndex := core.FindTaskIndex(tasks, taskID)
+	if taskIndex == -1 {
 		return fmt.Errorf("task '%s' not found for worktree '%s'", taskID, worktreeName)
 	}
+	task := tasks[taskIndex]
 
 	// Get worktree info for display
-	worktreesDir := filepath.Join(autom8Path, "worktrees")
 	pids, _ := core.LoadPids()
 	info := core.GetWorktreeInfo(worktreesDir, worktreeName, pids)
 
@@ -83,7 +80,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	diffOutput, _ := diffCmd.Output()
 
 	// Build system prompt with context
-	systemPrompt := buildChatSystemPrompt(task, worktreeName, info.Branch, string(logOutput), string(diffOutput))
+	systemPrompt := buildChatSystemPrompt(&task, worktreeName, info.Branch, string(logOutput), string(diffOutput))
 
 	// Display worktree info before starting
 	fmt.Println(TitleStyle.Render("Interactive Chat Session"))

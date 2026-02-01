@@ -26,12 +26,12 @@ To return to your original directory, simply exit the shell (Ctrl+D or 'exit').`
 func runInspect(cmd *cobra.Command, args []string) error {
 	worktreeName := args[0]
 
-	autom8Path, err := core.GetAutom8Dir()
+	worktreesDir, err := core.GetWorktreesDir()
 	if err != nil {
-		return fmt.Errorf("error getting autom8 dir: %w", err)
+		return fmt.Errorf("error getting worktrees dir: %w", err)
 	}
 
-	worktreePath := filepath.Join(autom8Path, "worktrees", worktreeName)
+	worktreePath := filepath.Join(worktreesDir, worktreeName)
 
 	// Check if worktree exists
 	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
@@ -39,7 +39,6 @@ func runInspect(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get worktree info for display
-	worktreesDir := filepath.Join(autom8Path, "worktrees")
 	pids, _ := core.LoadPids()
 	info := core.GetWorktreeInfo(worktreesDir, worktreeName, pids)
 

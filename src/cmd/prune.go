@@ -30,8 +30,15 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
-	autom8Path, _ := core.GetAutom8Dir()
-	worktreesDir := filepath.Join(autom8Path, "worktrees")
+	taskIDs := make(map[string]struct{}, len(tasks))
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
+	}
+
+	worktreesDir, err := core.GetWorktreesDir()
+	if err != nil {
+		return err
+	}
 
 	taskMap := make(map[string]core.Task, len(tasks))
 	for _, t := range tasks {
@@ -40,7 +47,7 @@ func runPrune(cmd *cobra.Command, args []string) error {
 
 	protected := make(map[string]bool, len(tasks))
 	for _, t := range tasks {
-		if t.Status == "completed" {
+		if t.Status == core.TaskStatusCompleted {
 			continue
 		}
 		currentID := t.ID
@@ -63,7 +70,7 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	var skippedDependents int
 
 	for _, t := range tasks {
-		if t.Status == "completed" {
+		if t.Status == core.TaskStatusCompleted {
 			if protected[t.ID] {
 				// Keep task because it's needed by active dependent tasks.
 				remaining = append(remaining, t)
@@ -78,23 +85,24 @@ func runPrune(cmd *cobra.Command, args []string) error {
 						continue
 					}
 					worktreeName := entry.Name()
-					// Check if worktree belongs to this task ({task-name}-{instance})
-					if strings.HasPrefix(worktreeName, t.ID+"-") {
-						worktreePath := filepath.Join(worktreesDir, worktreeName)
-						// Get branch name before removing
-						branchCmd := exec.Command("git", "-C", worktreePath, "branch", "--show-current")
-						branchOutput, _ := branchCmd.Output()
-						branchName := strings.TrimSpace(string(branchOutput))
+					worktreeTaskID, ok := core.TaskIDFromWorktree(worktreeName, taskIDs)
+					if !ok || worktreeTaskID != t.ID {
+						continue
+					}
+					worktreePath := filepath.Join(worktreesDir, worktreeName)
+					// Get branch name before removing
+					branchCmd := exec.Command("git", "-C", worktreePath, "branch", "--show-current")
+					branchOutput, _ := branchCmd.Output()
+					branchName := strings.TrimSpace(string(branchOutput))
 
-						// Remove worktree
-						removeCmd := exec.Command("git", "-C", gitRoot, "worktree", "remove", "--force", worktreePath)
-						if removeCmd.Run() == nil {
-							worktreesRemoved++
-							// Delete the branch
-							if branchName != "" {
-								deleteBranchCmd := exec.Command("git", "-C", gitRoot, "branch", "-D", branchName)
-								deleteBranchCmd.Run()
-							}
+					// Remove worktree
+					removeCmd := exec.Command("git", "-C", gitRoot, "worktree", "remove", "--force", worktreePath)
+					if removeCmd.Run() == nil {
+						worktreesRemoved++
+						// Delete the branch
+						if branchName != "" {
+							deleteBranchCmd := exec.Command("git", "-C", gitRoot, "branch", "-D", branchName)
+							deleteBranchCmd.Run()
 						}
 					}
 				}
