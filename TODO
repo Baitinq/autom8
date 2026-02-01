@@ -18,3 +18,5 @@
 28. watch command?
 29. converge shoudl have winner reasoning
 30. If you start a task on one computer, it will be in progress but in another computer too as the task.json changes. We should probably have gitignored task progress somehow? idk
+31. better error recovery for loops
+32. accept should merge squash
