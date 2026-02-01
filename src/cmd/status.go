@@ -122,12 +122,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// Print worktrees for this task
 		worktrees := worktreesByTask[task.ID]
 		children := childrenMap[task.ID]
-		hasMore := len(children) > 0
+		hasChildren := len(children) > 0
 
 		if len(worktrees) > 0 {
 			fmt.Printf("%s%s\n", childPrefix, SubtitleStyle.Render("Worktrees:"))
 			for i, wt := range worktrees {
-				wtIsLast := i == len(worktrees)-1 && !hasMore
+				// Keep branch continuity if child tasks follow the worktrees section.
+				wtIsLast := i == len(worktrees)-1 && !hasChildren
 				wtBranch := "├── "
 				if wtIsLast {
 					wtBranch = "└── "
@@ -158,11 +159,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 					fmt.Printf("%s%s autom8 accept %s\n", wtChildPrefix, HighlightStyle.Render("→"), wt.Name)
 				}
 			}
-		} else if task.Status == "pending" {
+		} else if task.Status == "pending" && len(children) == 0 {
 			fmt.Printf("%s%s\n", childPrefix, SubtitleStyle.Render("(no worktrees - run 'autom8 implement')"))
 		}
 
-		// Print children (dependent tasks)
+		// Print children (dependent tasks) - these are separate from worktrees
+		if len(children) > 0 && len(worktrees) > 0 {
+			// Add blank line to visually separate worktrees from child tasks
+			fmt.Println()
+		}
 		for i, childID := range children {
 			printTask(childID, childPrefix, i == len(children)-1)
 		}
