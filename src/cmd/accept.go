@@ -14,14 +14,14 @@ import (
 var AcceptCmd = &cobra.Command{
 	Use:     "accept <worktree-name>",
 	Aliases: []string{"merge"},
-	Short:   "Merge a worktree branch into current branch and clean up",
+	Short:   "Merge a worktree branch into current branch",
 	Long: `Accept and merge a completed implementation from a worktree.
 
 This command will:
   1. Auto-commit any uncommitted changes in the worktree
   2. Merge the worktree's branch into your current branch
-  3. Remove the worktree directory
-  4. Delete the merged branch`,
+
+The worktree and branch are preserved. Use 'autom8 prune' to clean them up.`,
 	Example: `  autom8 accept my-task-1`,
 	Args:    cobra.ExactArgs(1),
 	RunE:    runAccept,
@@ -96,23 +96,6 @@ func runAccept(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error merging branch: %w\n%s\nResolve conflicts manually, then run 'autom8 accept' again to clean up", err, string(mergeOutput))
 	}
 	fmt.Printf("%s", string(mergeOutput))
-
-	// Remove the worktree
-	fmt.Printf("Removing worktree '%s'...\n", worktreeName)
-	removeCmd := exec.Command("git", "-C", gitRoot, "worktree", "remove", worktreePath)
-	removeOutput, err := removeCmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error removing worktree: %w\n%s\nYou may need to manually remove it with: git worktree remove %s", err, string(removeOutput), worktreePath)
-	}
-
-	// Delete the branch (it's been merged)
-	fmt.Printf("Deleting branch '%s'...\n", branchName)
-	deleteBranchCmd := exec.Command("git", "-C", gitRoot, "branch", "-d", branchName)
-	deleteBranchOutput, err := deleteBranchCmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("%s could not delete branch: %v\n%s\n", ErrorStyle.Render("Warning:"), err, string(deleteBranchOutput))
-		fmt.Println("The branch may need to be deleted manually with: git branch -D", branchName)
-	}
 
 	// Mark the task as completed
 	// Worktree name format: {task-name}-{instance} (e.g., my-task-1)
