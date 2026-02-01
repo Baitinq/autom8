@@ -18,7 +18,7 @@ var ShowCmd = &cobra.Command{
 
 This shows the diff in a PR-style format, making it easy to review what
 changes an implementation has made.`,
-	Example: `  autom8 show task-123456789-1`,
+	Example: `  autom8 show my-task-1`,
 	Args:    cobra.ExactArgs(1),
 	RunE:    runShow,
 }

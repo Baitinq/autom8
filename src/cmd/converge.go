@@ -15,23 +15,23 @@ import (
 var mergeFlag bool
 
 var ConvergeCmd = &cobra.Command{
-	Use:   "converge [task-id]",
+	Use:   "converge [task-name]",
 	Short: "Use AI to pick the best implementation from multiple worktrees",
 	Long: `Analyze all worktrees for a task and determine which implementation is best.
 
 An AI agent will inspect the diffs and code from each worktree, comparing them
 against the original task prompt and verification criteria to pick a winner.
 
-If no task ID is provided, all tasks with multiple worktrees will be evaluated.`,
+If no task name is provided, all tasks with multiple worktrees will be evaluated.`,
 	Example: `  # Converge all tasks with multiple worktrees
   autom8 converge
 
   # Converge a specific task
-  autom8 converge task-123456789
+  autom8 converge my-task
 
   # Converge and auto-merge the winner
   autom8 converge --merge
-  autom8 converge task-123456789 --merge`,
+  autom8 converge my-task --merge`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runConverge,
 }
@@ -75,7 +75,7 @@ func runConverge(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			worktreeName := entry.Name()
-			// Extract task ID: task-{timestamp}-{instance} -> task-{timestamp}
+			// Extract task ID: {task-name}-{instance} -> {task-name}
 			taskID := worktreeName
 			if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
 				taskID = worktreeName[:lastDash]
@@ -254,7 +254,7 @@ func buildConvergePrompt(task core.Task, worktrees []core.WorktreeInfo, gitRoot 
 	sb.WriteString("- Simplicity: Is the solution appropriately simple without over-engineering?\n\n")
 	sb.WriteString("IMPORTANT: Your response MUST include the exact worktree name of the winner in this format:\n")
 	sb.WriteString("WINNER: <worktree-name>\n\n")
-	sb.WriteString("For example: WINNER: task-123456789-1\n\n")
+	sb.WriteString("For example: WINNER: my-task-1\n\n")
 	sb.WriteString("Explain your reasoning before declaring the winner.\n")
 
 	return sb.String()

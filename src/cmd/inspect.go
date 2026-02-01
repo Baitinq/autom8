@@ -18,7 +18,7 @@ var InspectCmd = &cobra.Command{
 
 This allows you to inspect the implementation, run tests, or make manual changes.
 To return to your original directory, simply exit the shell (Ctrl+D or 'exit').`,
-	Example: `  autom8 inspect task-123456789-1`,
+	Example: `  autom8 inspect my-task-1`,
 	Args:    cobra.ExactArgs(1),
 	RunE:    runInspect,
 }

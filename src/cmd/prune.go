@@ -47,7 +47,7 @@ func runPrune(cmd *cobra.Command, args []string) error {
 						continue
 					}
 					worktreeName := entry.Name()
-					// Check if worktree belongs to this task (task-{id}-{instance})
+					// Check if worktree belongs to this task ({task-name}-{instance})
 					if strings.HasPrefix(worktreeName, t.ID+"-") {
 						worktreePath := filepath.Join(worktreesDir, worktreeName)
 						// Get branch name before removing

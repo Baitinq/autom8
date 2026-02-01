@@ -12,21 +12,21 @@ import (
 )
 
 var DeleteCmd = &cobra.Command{
-	Use:     "delete <task-id>",
+	Use:     "delete <task-name>",
 	Aliases: []string{"rm", "remove"},
-	Short:   "Delete a task by ID",
+	Short:   "Delete a task by name",
 	Long: `Delete a task from the task list.
 
 Note: Tasks that have other tasks depending on them cannot be deleted
 until their dependents are deleted first.`,
-	Example: `  autom8 delete task-123456789`,
+	Example: `  autom8 delete my-task`,
 	Args:    cobra.ExactArgs(1),
 	RunE:    runDelete,
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("task ID required\nRun 'autom8 list' to see task IDs")
+		return fmt.Errorf("task name required\nRun 'autom8 list' to see task names")
 	}
 
 	taskID := args[0]
@@ -51,7 +51,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	if taskIndex == -1 {
-		return fmt.Errorf("task '%s' not found\nRun 'autom8 list' to see task IDs", taskID)
+		return fmt.Errorf("task '%s' not found\nRun 'autom8 list' to see task names", taskID)
 	}
 
 	// Check if any other tasks depend on this one
@@ -82,7 +82,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			worktreeName := entry.Name()
-			// Check if worktree belongs to this task (task-{id}-{instance})
+			// Check if worktree belongs to this task ({task-name}-{instance})
 			if strings.HasPrefix(worktreeName, taskID+"-") {
 				worktreePath := filepath.Join(worktreesDir, worktreeName)
 				// Get branch name before removing
