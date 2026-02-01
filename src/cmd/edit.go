@@ -9,16 +9,38 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	editPromptFlag    string
+	editCriteriaFlags []string
+	editDependsOnFlag string
+)
+
 var EditCmd = &cobra.Command{
 	Use:   "edit <task-id>",
 	Short: "Edit an existing task",
 	Long: `Edit an existing task's prompt, verification criteria, or dependency.
 
-Starts an interactive editor to modify the task. All fields are optional -
-press Enter to keep the current value.`,
-	Example: `  autom8 edit task-123456789`,
-	Args:    cobra.ExactArgs(1),
-	RunE:    runEdit,
+Without flags, starts an interactive editor to modify the task.
+With flags, updates the task directly (non-interactive mode).`,
+	Example: `  # Interactive mode
+  autom8 edit task-123456789
+
+  # Non-interactive mode - update prompt only
+  autom8 edit task-123456789 -p "New prompt text"
+
+  # Non-interactive mode - replace criteria
+  autom8 edit task-123456789 -c "criterion 1" -c "criterion 2"
+
+  # Non-interactive mode - combine flags
+  autom8 edit task-123456789 -p "New prompt" -c "New criterion" -d task-987654321`,
+	Args: cobra.ExactArgs(1),
+	RunE: runEdit,
+}
+
+func init() {
+	EditCmd.Flags().StringVarP(&editPromptFlag, "prompt", "p", "", "Set/replace the task prompt")
+	EditCmd.Flags().StringArrayVarP(&editCriteriaFlags, "criteria", "c", []string{}, "Set/replace verification criteria (can be specified multiple times)")
+	EditCmd.Flags().StringVarP(&editDependsOnFlag, "depends-on", "d", "", "Set/change dependency task ID (use empty string to remove)")
 }
 
 func runEdit(cmd *cobra.Command, args []string) error {
@@ -48,69 +70,101 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("task '%s' not found\nRun 'autom8 status' to see task IDs", taskID)
 	}
 
-	// Prepare current values for editing
-	prompt := task.Prompt
-	criteriaInput := strings.Join(task.VerificationCriteria, "\n")
-	dependsOn := task.DependsOn
+	// Check if any flags were provided for non-interactive mode
+	hasFlags := cmd.Flags().Changed("prompt") || cmd.Flags().Changed("criteria") || cmd.Flags().Changed("depends-on")
 
-	// Build dependency options (exclude current task to prevent self-reference)
-	dependsOnOptions := []huh.Option[string]{
-		huh.NewOption[string]("None (independent task)", ""),
-	}
-	for _, t := range tasks {
-		if t.ID != taskID { // Can't depend on itself
-			label := fmt.Sprintf("%s - %s", t.ID, core.Truncate(t.Prompt, 40))
-			dependsOnOptions = append(dependsOnOptions, huh.NewOption[string](label, t.ID))
-		}
-	}
-
-	// Interactive editing with huh
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewText().
-				Title("Task Prompt").
-				Description("What should the AI implement?").
-				Value(&prompt).
-				Validate(func(s string) error {
-					if strings.TrimSpace(s) == "" {
-						return fmt.Errorf("prompt cannot be empty")
-					}
-					return nil
-				}),
-		),
-		huh.NewGroup(
-			huh.NewText().
-				Title("Verification Criteria").
-				Description("How should success be verified? (one per line, optional)").
-				Value(&criteriaInput),
-		),
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Depends On").
-				Description("Select a task this depends on (optional)").
-				Options(dependsOnOptions...).
-				Value(&dependsOn),
-		),
-	).WithTheme(huh.ThemeDracula())
-
-	err = form.Run()
-	if err != nil {
-		if err == huh.ErrUserAborted {
-			fmt.Println("\nAborted. No changes made.")
-			return nil
-		}
-		return err
-	}
-
-	// Parse criteria from multiline input
+	var prompt string
 	var criteria []string
-	if strings.TrimSpace(criteriaInput) != "" {
-		for _, line := range strings.Split(criteriaInput, "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				criteria = append(criteria, line)
+	var dependsOn string
+
+	if hasFlags {
+		// Non-interactive mode: apply flag values or keep existing
+		if cmd.Flags().Changed("prompt") {
+			prompt = editPromptFlag
+		} else {
+			prompt = task.Prompt
+		}
+
+		if cmd.Flags().Changed("criteria") {
+			criteria = editCriteriaFlags
+		} else {
+			criteria = task.VerificationCriteria
+		}
+
+		if cmd.Flags().Changed("depends-on") {
+			dependsOn = editDependsOnFlag
+		} else {
+			dependsOn = task.DependsOn
+		}
+	} else {
+		// Interactive mode
+		prompt = task.Prompt
+		criteriaInput := strings.Join(task.VerificationCriteria, "\n")
+		dependsOn = task.DependsOn
+
+		// Build dependency options (exclude current task to prevent self-reference)
+		dependsOnOptions := []huh.Option[string]{
+			huh.NewOption[string]("None (independent task)", ""),
+		}
+		for _, t := range tasks {
+			if t.ID != taskID { // Can't depend on itself
+				label := fmt.Sprintf("%s - %s", t.ID, core.Truncate(t.Prompt, 40))
+				dependsOnOptions = append(dependsOnOptions, huh.NewOption[string](label, t.ID))
 			}
 		}
+
+		// Interactive editing with huh
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewText().
+					Title("Task Prompt").
+					Description("What should the AI implement?").
+					Value(&prompt).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return fmt.Errorf("prompt cannot be empty")
+						}
+						return nil
+					}),
+			),
+			huh.NewGroup(
+				huh.NewText().
+					Title("Verification Criteria").
+					Description("How should success be verified? (one per line, optional)").
+					Value(&criteriaInput),
+			),
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Depends On").
+					Description("Select a task this depends on (optional)").
+					Options(dependsOnOptions...).
+					Value(&dependsOn),
+			),
+		).WithTheme(huh.ThemeDracula())
+
+		err = form.Run()
+		if err != nil {
+			if err == huh.ErrUserAborted {
+				fmt.Println("\nAborted. No changes made.")
+				return nil
+			}
+			return err
+		}
+
+		// Parse criteria from multiline input
+		if strings.TrimSpace(criteriaInput) != "" {
+			for _, line := range strings.Split(criteriaInput, "\n") {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					criteria = append(criteria, line)
+				}
+			}
+		}
+	}
+
+	// Validate prompt is not empty
+	if strings.TrimSpace(prompt) == "" {
+		return fmt.Errorf("prompt cannot be empty")
 	}
 
 	// Validate dependency exists if specified
