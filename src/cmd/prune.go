@@ -15,8 +15,8 @@ var PruneCmd = &cobra.Command{
 	Use:     "prune",
 	Aliases: []string{"clean", "purge"},
 	Short:   "Delete all completed tasks",
-	Long:  `Remove all tasks with status "completed" from the task list.`,
-	RunE:  runPrune,
+	Long:    `Remove all tasks with status "completed" from the task list.`,
+	RunE:    runPrune,
 }
 
 func runPrune(cmd *cobra.Command, args []string) error {
@@ -33,12 +33,43 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	autom8Path, _ := core.GetAutom8Dir()
 	worktreesDir := filepath.Join(autom8Path, "worktrees")
 
+	taskMap := make(map[string]core.Task, len(tasks))
+	for _, t := range tasks {
+		taskMap[t.ID] = t
+	}
+
+	protected := make(map[string]bool, len(tasks))
+	for _, t := range tasks {
+		if t.Status == "completed" {
+			continue
+		}
+		currentID := t.ID
+		for currentID != "" {
+			if protected[currentID] {
+				break
+			}
+			protected[currentID] = true
+			current, ok := taskMap[currentID]
+			if !ok || current.DependsOn == "" {
+				break
+			}
+			currentID = current.DependsOn
+		}
+	}
+
 	var remaining []core.Task
 	var pruned int
 	var worktreesRemoved int
+	var skippedDependents int
 
 	for _, t := range tasks {
 		if t.Status == "completed" {
+			if protected[t.ID] {
+				// Keep task because it's needed by active dependent tasks.
+				remaining = append(remaining, t)
+				skippedDependents++
+				continue
+			}
 			pruned++
 			// Find and remove worktrees for this task
 			if entries, err := os.ReadDir(worktreesDir); err == nil {
@@ -73,8 +104,13 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if pruned == 0 {
+	if pruned == 0 && skippedDependents == 0 {
 		fmt.Println(SubtitleStyle.Render("No completed tasks to prune."))
+		return nil
+	}
+
+	if pruned == 0 && skippedDependents > 0 {
+		fmt.Println(SubtitleStyle.Render(fmt.Sprintf("Skipped %d completed task(s) needed by active dependents.", skippedDependents)))
 		return nil
 	}
 
@@ -82,6 +118,10 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error saving tasks: %w", err)
 	}
 
-	fmt.Println(SuccessStyle.Render(fmt.Sprintf("Pruned %d completed task(s), removed %d worktree(s).", pruned, worktreesRemoved)))
+	msg := fmt.Sprintf("Pruned %d completed task(s), removed %d worktree(s).", pruned, worktreesRemoved)
+	if skippedDependents > 0 {
+		msg += fmt.Sprintf(" Skipped %d task(s) needed by active dependents.", skippedDependents)
+	}
+	fmt.Println(SuccessStyle.Render(msg))
 	return nil
 }

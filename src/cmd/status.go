@@ -48,7 +48,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	for _, t := range tasks {
 		taskIDs[t.ID] = struct{}{}
 		taskMap[t.ID] = t
+	}
+
+	for _, t := range tasks {
 		if t.DependsOn == "" {
+			rootTasks = append(rootTasks, t.ID)
+		} else if _, parentExists := taskMap[t.DependsOn]; !parentExists {
+			// Orphaned task (parent was deleted) - treat as root task
 			rootTasks = append(rootTasks, t.ID)
 		} else {
 			childrenMap[t.DependsOn] = append(childrenMap[t.DependsOn], t.ID)
@@ -122,6 +128,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			fmt.Printf("%s%s\n", childPrefix, SubtitleStyle.Render("Criteria:"))
 			for _, c := range task.VerificationCriteria {
 				fmt.Printf("%s  • %s\n", childPrefix, c)
+			}
+		}
+
+		// Show warning for orphaned tasks (parent was deleted)
+		if task.DependsOn != "" {
+			if _, parentExists := taskMap[task.DependsOn]; !parentExists {
+				fmt.Printf("%s%s %s\n", childPrefix, ErrorStyle.Render("⚠"), SubtitleStyle.Render(fmt.Sprintf("(parent '%s' was deleted)", task.DependsOn)))
 			}
 		}
 
