@@ -8,11 +8,19 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const (
-	WorkerPidFile = "worker.pid"
+	WorkerPidFile     = "worker.pid"
+	WorktreeStatusFile = "status.json"
 )
+
+// WorktreeStatus represents the status of a worktree stored in status.json
+type WorktreeStatus struct {
+	Status      string    `json:"status"`       // "running", "ready", "idle"
+	CompletedAt time.Time `json:"completed_at,omitempty"`
+}
 
 // WorktreeInfo holds information about a worktree's status
 type WorktreeInfo struct {
@@ -22,6 +30,7 @@ type WorktreeInfo struct {
 	CommitsAhead string
 	HasChanges   bool
 	IsRunning    bool
+	Ready        bool // True if this worktree's implementation is complete and reviewed
 }
 
 func LoadPids() (map[string]int, error) {
@@ -127,5 +136,50 @@ func GetWorktreeInfo(worktreesDir, worktreeName string, pids map[string]int) Wor
 		}
 	}
 
+	// Read worktree status file to check if ready
+	if status, err := ReadWorktreeStatus(worktreeName); err == nil {
+		info.Ready = status.Status == "ready"
+	}
+
 	return info
+}
+
+// ReadWorktreeStatus reads the status file for a worktree from .autom8/logs/<worktreeName>/status.json
+func ReadWorktreeStatus(worktreeName string) (*WorktreeStatus, error) {
+	autom8Dir, err := GetAutom8Dir()
+	if err != nil {
+		return nil, err
+	}
+
+	statusPath := filepath.Join(autom8Dir, "logs", worktreeName, WorktreeStatusFile)
+	data, err := os.ReadFile(statusPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var status WorktreeStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
+// WriteWorktreeStatus writes the status file for a worktree to .autom8/logs/<worktreeName>/status.json
+func WriteWorktreeStatus(worktreeName string, status *WorktreeStatus) error {
+	autom8Dir, err := GetAutom8Dir()
+	if err != nil {
+		return err
+	}
+
+	logsDir := filepath.Join(autom8Dir, "logs", worktreeName)
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return err
+	}
+
+	statusPath := filepath.Join(logsDir, WorktreeStatusFile)
+	data, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(statusPath, data, 0644)
 }
