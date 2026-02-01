@@ -55,6 +55,18 @@ With `-n 3`, you get exponential branching:
 - 2 independent tasks = 6 worktrees
 - 1 dependent task = 9 worktrees (3 instances per each of 3 parent instances)
 
+### Converge implementations
+
+```bash
+# Converge all tasks with multiple worktrees
+autom8 converge
+
+# Converge a specific task
+autom8 converge my-task
+```
+
+Converge outputs the winning worktree plus a short 1-2 sentence reasoning summary.
+
 ## How it works
 
 1. **Define** - Use `autom8 new` to create tasks with prompts, verification criteria, and dependencies
