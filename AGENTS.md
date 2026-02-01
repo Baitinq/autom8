@@ -1,5 +1,15 @@
 # AGENTS.md - autom8 Repository Guide
 
+> **⚠️ MANDATORY: DO NOT EDIT CODE DIRECTLY**
+>
+> When implementing new features or changes in this repository, you MUST use autom8 itself:
+> 1. `autom8 new` - Create a task describing the change
+> 2. `autom8 implement` - Let AI agents implement it
+> 3. `autom8 converge` - Pick the best implementation
+> 4. `autom8 accept` - Merge the winner
+>
+> **NEVER use Edit/Write tools on src/ files directly.** This is a dogfooding requirement.
+
 This document serves as the ground truth for AI agents working on this repository.
 
 ## Purpose
@@ -188,17 +198,6 @@ User reviews/merges via standard git
 3. **Minimal dependencies** - Only essential libraries (cobra, huh, lipgloss)
 4. **JSON storage** - Human-readable, version-controllable tasks
 5. **Iterative execution** - Claude processes run in loops until "TASK COMPLETE"
-
-## Dogfooding
-
-**All new features should be implemented through autom8 itself.** This project eats its own dog food:
-
-1. Define the feature as an autom8 task using `autom8 new`
-2. Run `autom8 implement` to generate implementations
-3. Use `autom8 converge` to pick the best result
-4. Merge via `autom8 accept`
-
-This ensures autom8 is continuously tested in real-world usage and any friction in the workflow is discovered and addressed.
 
 ## Common Modifications
 
