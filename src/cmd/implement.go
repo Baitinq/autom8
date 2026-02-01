@@ -117,7 +117,7 @@ func findHighestInstanceNumber(worktreesDir, taskID string) int {
 	return maxInstance
 }
 
-func findParentSuffixes(worktreesDir, taskID string) []string {
+func findParentSuffixes(worktreesDir, taskID string, taskIDs map[string]struct{}) []string {
 	entries, err := os.ReadDir(worktreesDir)
 	if err != nil {
 		return nil
@@ -132,6 +132,10 @@ func findParentSuffixes(worktreesDir, taskID string) []string {
 			continue
 		}
 		name := entry.Name()
+		baseID, ok := baseTaskIDFromWorktree(name, taskIDs)
+		if !ok || baseID != taskID {
+			continue
+		}
 		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
@@ -155,6 +159,26 @@ func findParentSuffixes(worktreesDir, taskID string) []string {
 	}
 
 	return suffixes
+}
+
+func baseTaskIDFromWorktree(name string, taskIDs map[string]struct{}) (string, bool) {
+	parts := strings.Split(name, "-")
+	if len(parts) < 2 {
+		return "", false
+	}
+	if _, err := strconv.Atoi(parts[len(parts)-1]); err != nil {
+		return "", false
+	}
+	for i := len(parts) - 1; i >= 1; i-- {
+		if _, err := strconv.Atoi(parts[i]); err != nil {
+			break
+		}
+		candidate := strings.Join(parts[:i], "-")
+		if _, ok := taskIDs[candidate]; ok {
+			return candidate, true
+		}
+	}
+	return "", false
 }
 
 func findHighestChildInstance(worktreesDir, taskID, depSuffix string) int {
@@ -266,6 +290,10 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	for _, t := range tasks {
 		taskMap[t.ID] = t
 	}
+	taskIDs := make(map[string]struct{}, len(tasks))
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
+	}
 
 	// Separate tasks with and without dependencies
 	var independentTasks []core.Task
@@ -354,7 +382,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		depSuffixes := independentBranches[task.DependsOn]
 		if depSuffixes == nil {
 			if addMode {
-				depSuffixes = findParentSuffixes(worktreesDir, task.DependsOn)
+				depSuffixes = findParentSuffixes(worktreesDir, task.DependsOn, taskIDs)
 			}
 			if len(depSuffixes) == 0 {
 				depSuffixes = make([]string, numInstances)
