@@ -108,9 +108,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			statusBadge = SubtitleStyle.Render(fmt.Sprintf("[%s]", task.Status))
 		}
 
-		// Print task header
-		fmt.Printf("%s%s%s %s\n", prefix, branch, statusBadge, core.Truncate(task.Prompt, 50))
-		fmt.Printf("%s%s %s\n", childPrefix, SubtitleStyle.Render("Name:"), IDStyle.Render(task.ID))
+		// Print task header: name at top, prompt below
+		fmt.Printf("%s%s%s %s\n", prefix, branch, statusBadge, IDStyle.Render(task.ID))
+		fmt.Printf("%s%s %s\n", childPrefix, SubtitleStyle.Render("Prompt:"), core.Truncate(task.Prompt, 60))
 
 		// Print verification criteria
 		if len(task.VerificationCriteria) > 0 {
