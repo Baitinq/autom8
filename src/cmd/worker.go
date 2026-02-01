@@ -161,30 +161,37 @@ func runWorker(cmd *cobra.Command, args []string) error {
 }
 
 // runWorkerReviewLoop runs the review loop after implementation completes.
+// The reviewer agent will directly apply any fixes it finds.
 func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch string) error {
 	// Extract worktree name from path for status updates
 	worktreeName := filepath.Base(worktreePath)
 
 	reviewIteration := 0
-	fixIteration := 0
 
 	for {
 		reviewIteration++
 
-		// Write status: reviewing with fix iteration count
+		// Write status: reviewing with iteration count
 		reviewStatus := &core.WorktreeStatus{
 			Status:       core.WorktreePhaseReviewing,
-			FixIteration: fixIteration,
+			FixIteration: reviewIteration - 1, // Show how many review passes have occurred
 		}
 		core.WriteWorktreeStatus(worktreeName, reviewStatus)
 
 		// Create log file for this review iteration
 		reviewLogFile := filepath.Join(logsDir, fmt.Sprintf("review-iteration-%d.log", reviewIteration))
 
-		// Run codex review with base branch
-		// Note: codex review --base doesn't accept a prompt argument
-		codexCmd := exec.Command("codex", "review", "--base", baseBranch)
+		// Build the review prompt with reviewer.md template, task info, and diff
+		reviewPrompt, err := buildReviewPrompt(task, worktreePath, baseBranch)
+		if err != nil {
+			os.WriteFile(reviewLogFile, []byte(fmt.Sprintf("ERROR building prompt: %v", err)), 0644)
+			return fmt.Errorf("failed to build review prompt: %w", err)
+		}
+
+		// Run codex exec with the review prompt via stdin to avoid argv length limits
+		codexCmd := exec.Command("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-")
 		codexCmd.Dir = worktreePath
+		codexCmd.Stdin = strings.NewReader(reviewPrompt)
 
 		output, err := codexCmd.CombinedOutput()
 		if err != nil {
@@ -196,56 +203,32 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 		// Write output to log file
 		os.WriteFile(reviewLogFile, output, 0644)
 
-		// Check if review is approved
-		if strings.Contains(string(output), "REVIEW APPROVED") {
-			return nil // Success - review approved
+		// Check if review is blocked (reviewer found issues that require reimplementation)
+		if strings.Contains(string(output), "REVIEW BLOCKED") {
+			return fmt.Errorf("review blocked in iteration %d", reviewIteration)
 		}
 
-		// Review found issues - run fix iteration
-		fixIteration++
-
-		// Update status to reflect current fix iteration
-		fixStatus := &core.WorktreeStatus{
-			Status:       core.WorktreePhaseReviewing,
-			FixIteration: fixIteration,
-		}
-		core.WriteWorktreeStatus(worktreeName, fixStatus)
-
-		// Build fix prompt with reviewer feedback
-		fixPrompt := buildFixPrompt(task, string(output))
-
-		// Create log file for this fix iteration
-		fixLogFile := filepath.Join(logsDir, fmt.Sprintf("fix-iteration-%d.log", fixIteration))
-
-		// Run codex exec to fix issues
-		fixCmd := exec.Command("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", fixPrompt)
-		fixCmd.Dir = worktreePath
-
-		fixOutput, err := fixCmd.CombinedOutput()
-		if err != nil {
-			// Log the error with full output
-			os.WriteFile(fixLogFile, []byte(fmt.Sprintf("ERROR: %v\n\nOutput:\n%s", err, string(fixOutput))), 0644)
-			return fmt.Errorf("fix iteration %d failed: %w", fixIteration, err)
+		// Check if review is complete (reviewer either found no issues or applied all fixes)
+		if strings.Contains(string(output), "REVIEW COMPLETE") {
+			return nil // Success - review complete
 		}
 
-		// Write output to log file
-		os.WriteFile(fixLogFile, fixOutput, 0644)
-
-		// Continue to next review iteration
+		// Reviewer made changes or found issues it couldn't fix - loop back for another review pass
 	}
 }
 
-// buildFixPrompt constructs the prompt for fixing issues based on reviewer feedback.
-func buildFixPrompt(task core.Task, reviewerFeedback string) string {
+// buildReviewPrompt constructs the prompt for the reviewer agent.
+func buildReviewPrompt(task core.Task, worktreePath, baseBranch string) (string, error) {
 	var sb strings.Builder
 
-	// Load implementer template for context
-	implementerTemplate, _ := loadAgentTemplate("implementer")
-	if implementerTemplate != "" {
-		sb.WriteString(implementerTemplate)
+	// Load reviewer template
+	reviewerTemplate, err := loadAgentTemplate("reviewer")
+	if err != nil {
+		return "", fmt.Errorf("failed to load reviewer template: %w", err)
 	}
 
-	sb.WriteString("## Original Task\n\n")
+	sb.WriteString(reviewerTemplate)
+	sb.WriteString("\n")
 	sb.WriteString(task.Prompt)
 	sb.WriteString("\n\n")
 
@@ -257,14 +240,18 @@ func buildFixPrompt(task core.Task, reviewerFeedback string) string {
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("## Reviewer Feedback\n\n")
-	sb.WriteString("The code review found the following issues that need to be fixed:\n\n")
-	sb.WriteString(reviewerFeedback)
-	sb.WriteString("\n\n")
+	// Get the diff against base branch
+	diffCmd := exec.Command("git", "diff", baseBranch+"...HEAD")
+	diffCmd.Dir = worktreePath
+	diffOutput, err := diffCmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get diff: %w", err)
+	}
 
-	sb.WriteString("## Your Task\n\n")
-	sb.WriteString("Fix the issues identified by the reviewer. Make the necessary changes to satisfy all verification criteria.\n")
-	sb.WriteString("After making fixes, commit your changes with a descriptive message.\n")
+	sb.WriteString("## Implementation Diff\n\n")
+	sb.WriteString("```diff\n")
+	sb.WriteString(string(diffOutput))
+	sb.WriteString("```\n")
 
-	return sb.String()
+	return sb.String(), nil
 }
