@@ -108,11 +108,15 @@ func GetWorktreeInfo(worktreesDir, worktreeName string, pids map[string]int) Wor
 		info.CommitsAhead = "0"
 	}
 
-	// Check if the worker is running by looking for the PID file in the worktree
-	pidFilePath := filepath.Join(worktreePath, WorkerPidFile)
-	if pidData, err := os.ReadFile(pidFilePath); err == nil {
-		if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
-			info.IsRunning = IsProcessRunning(pid)
+	// Check if the worker is running by looking for the PID file in logs directory
+	// (PID file is stored in .autom8/logs/<worktreeName>/worker.pid to avoid git status noise)
+	autom8Dir, err := GetAutom8Dir()
+	if err == nil {
+		pidFilePath := filepath.Join(autom8Dir, "logs", worktreeName, WorkerPidFile)
+		if pidData, err := os.ReadFile(pidFilePath); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
+				info.IsRunning = IsProcessRunning(pid)
+			}
 		}
 	}
 

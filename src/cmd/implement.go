@@ -245,8 +245,9 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 
 	// Check if worktree already exists
 	if _, err := os.Stat(worktreePath); err == nil {
-		// Check if worker is already running
-		pidFile := filepath.Join(worktreePath, core.WorkerPidFile)
+		// Check if worker is already running (PID file is in logs directory, not worktree)
+		autom8Path := filepath.Dir(worktreesDir)
+		pidFile := filepath.Join(autom8Path, "logs", instanceID, core.WorkerPidFile)
 		if pidData, err := os.ReadFile(pidFile); err == nil {
 			if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
 				if core.IsProcessRunning(pid) {

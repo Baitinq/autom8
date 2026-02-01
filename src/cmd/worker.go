@@ -47,20 +47,10 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("worktree path does not exist: %s", workerWorktreePath)
 	}
 
-	// Write PID file to worktree directory
-	pidFile := filepath.Join(workerWorktreePath, core.WorkerPidFile)
-	pid := os.Getpid()
-	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644); err != nil {
-		return fmt.Errorf("failed to write PID file: %w", err)
-	}
-
-	// Ensure PID file is removed on exit (success or failure)
-	defer os.Remove(pidFile)
-
 	// Extract worktree name from path
 	worktreeName := filepath.Base(workerWorktreePath)
 
-	// Set up logging
+	// Set up logging directory first (needed for PID file)
 	autom8Path, err := core.GetAutom8Dir()
 	if err != nil {
 		return err
@@ -69,6 +59,16 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create logs dir: %w", err)
 	}
+
+	// Write PID file to logs directory (not worktree, to avoid git status noise)
+	pidFile := filepath.Join(logsDir, core.WorkerPidFile)
+	pid := os.Getpid()
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644); err != nil {
+		return fmt.Errorf("failed to write PID file: %w", err)
+	}
+
+	// Ensure PID file is removed on exit (success or failure)
+	defer os.Remove(pidFile)
 
 	// Load the task
 	tasks, err := core.LoadTasks()
