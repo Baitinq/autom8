@@ -34,6 +34,7 @@ func init() {
 	rootCmd.AddCommand(cmd.ConvergeCmd)
 	rootCmd.AddCommand(cmd.ShowCmd)
 	rootCmd.AddCommand(cmd.ChatCmd)
+	rootCmd.AddCommand(cmd.WorkerCmd)
 }
 
 func main() {

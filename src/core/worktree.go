@@ -5,8 +5,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
+)
+
+const (
+	WorkerPidFile = "worker.pid"
 )
 
 // WorktreeInfo holds information about a worktree's status
@@ -103,9 +108,19 @@ func GetWorktreeInfo(worktreesDir, worktreeName string, pids map[string]int) Wor
 		info.CommitsAhead = "0"
 	}
 
-	// Check if the tracked process is still running
-	if pid, ok := pids[worktreeName]; ok {
-		info.IsRunning = IsProcessRunning(pid)
+	// Check if the worker is running by looking for the PID file in the worktree
+	pidFilePath := filepath.Join(worktreePath, WorkerPidFile)
+	if pidData, err := os.ReadFile(pidFilePath); err == nil {
+		if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
+			info.IsRunning = IsProcessRunning(pid)
+		}
+	}
+
+	// Fall back to centralized pids.json if no worker.pid file found
+	if !info.IsRunning {
+		if pid, ok := pids[worktreeName]; ok {
+			info.IsRunning = IsProcessRunning(pid)
+		}
 	}
 
 	return info
