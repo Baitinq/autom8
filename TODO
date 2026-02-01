@@ -1,6 +1,18 @@
 1. memory.md
 2. (unrelated) review PR
-3. task name (llm summary)
-4. fully autonomous mode (does converge, auto accept, then next implement)
-5. test task dependencies
+4. fully autonomous mode (does converge, auto accept, then next implement). idk if should be integrated in cli or bash script
+5. test task dependencies, how does it wokr with implement etc
 6. maybe auto identify task dependencies no need for manual
+8. maybe the tool should be more focused for agent use. that way we can have better agent ux while reducing complexity. e.g. task creation can take in a name and a plan
+10. converge should add some sort of label to the task to indicate it has been converged
+11. maybe automatic converge
+15. way to reset worktrees and restat task? or add new implementations to existing task
+17 ./autom8.conf
+18. converge command should also be non blocking tbh? maybe not
+20. web ui for reviewing patch?
+22. running vs reviewing? ins status
+24. we need some sort of logs or something maybe? to see if its still implementing or what. this is hard
+25. actually ready shouldnt be the task, it should be the worktre
+26. when completing tasks with depends, ti doesnt work
+27. reviewer should also implement, not hand off to implementer again
+28. watch command?
