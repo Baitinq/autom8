@@ -337,28 +337,19 @@ func implementTaskWithSuffix(task core.Task, gitRoot, worktreesDir, baseBranchID
 // It uses codex review to check the implementation and codex exec to fix issues.
 // Returns empty string on success, or an error message on failure.
 func runReviewLoop(task core.Task, worktreePath, logsDir, baseBranch string) string {
-	// Load the reviewer agent template
-	reviewerTemplate, err := loadAgentTemplate("reviewer")
-	if err != nil {
-		reviewerTemplate = ""
-	}
-
 	reviewIteration := 0
 	fixIteration := 0
 
 	for {
 		reviewIteration++
 
-		// Build the review prompt
-		reviewPrompt := buildReviewPrompt(task, reviewerTemplate)
-
 		// Create log file for this review iteration
 		reviewLogFile := filepath.Join(logsDir, fmt.Sprintf("review-iteration-%d.log", reviewIteration))
 
-		// Run codex review with base branch (prompt via stdin using "-")
-		codexCmd := exec.Command("codex", "review", "--base", baseBranch, "-")
+		// Run codex review with base branch
+		// Note: codex review --base doesn't accept a prompt argument
+		codexCmd := exec.Command("codex", "review", "--base", baseBranch)
 		codexCmd.Dir = worktreePath
-		codexCmd.Stdin = strings.NewReader(reviewPrompt)
 
 		output, err := codexCmd.CombinedOutput()
 		if err != nil {
