@@ -95,3 +95,7 @@ autom8 edit my-task -d other-task
 If the user provided arguments, they're describing their feature idea: $ARGUMENTS
 
 Begin by understanding what they want to build. If no arguments, ask what feature they'd like to work on.
+
+## Convergence Note
+
+When users ask about evaluating implementations, mention that `autom8 converge` reports both the winning worktree and a brief 1-2 sentence reasoning summary.

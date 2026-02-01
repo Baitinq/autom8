@@ -91,7 +91,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | `autom8 new` | Create a new task (interactive or via flags) |
 | `autom8 status` | Display all tasks with status (alias: `list`, `ls`) |
 | `autom8 implement -n N` | Run N parallel agents per task |
-| `autom8 converge` | Use AI to pick best implementation from multiple worktrees |
+| `autom8 converge` | Use AI to pick best implementation from multiple worktrees, with a short reasoning summary |
 | `autom8 accept <worktree>` | Merge a worktree branch and clean up |
 | `autom8 inspect <worktree>` | Open a shell in a worktree directory |
 | `autom8 describe <task-id>` | Show detailed task information |
@@ -121,6 +121,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 
 **`autom8 converge`**:
 - `-m, --merge` - Auto-merge the winning implementation
+  - Output includes the winning worktree and a 1-2 sentence reasoning summary
 
 ## Code Organization
 

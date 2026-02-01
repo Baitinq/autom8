@@ -151,8 +151,8 @@ func runConverge(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		// Parse the response to extract the winner
-		winner := parseConvergeResponse(string(output), worktrees)
+		// Parse the response to extract the winner and reasoning
+		winner, reasoning := parseConvergeResponse(string(output), worktrees)
 		if winner == "" {
 			fmt.Printf("    %s could not determine a winner\n", ErrorStyle.Render("[error]"))
 			// Print the raw output for debugging
@@ -162,6 +162,9 @@ func runConverge(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Printf("    %s %s\n", SuccessStyle.Render("[winner]"), NameStyle.Render(winner))
+		if reasoning != "" {
+			fmt.Printf("    %s %s\n", SubtitleStyle.Render("[reason]"), reasoning)
+		}
 
 		// Update task with winner
 		for i, t := range tasks {
@@ -246,15 +249,18 @@ func buildConvergePrompt(task core.Task, worktrees []core.WorktreeInfo, gitRoot 
 	sb.WriteString("- Completeness: Are all verification criteria met?\n")
 	sb.WriteString("- Code quality: Is the code clean, readable, and maintainable?\n")
 	sb.WriteString("- Simplicity: Is the solution appropriately simple without over-engineering?\n\n")
-	sb.WriteString("IMPORTANT: Your response MUST include the exact worktree name of the winner in this format:\n")
-	sb.WriteString("<output>WINNER: <worktree-name></output>\n\n")
-	sb.WriteString("For example: <output>WINNER: my-task-1</output>\n\n")
-	sb.WriteString("Explain your reasoning before declaring the winner.\n")
+	sb.WriteString("IMPORTANT: Your response MUST include the exact worktree name of the winner AND a brief reasoning summary in this format:\n")
+	sb.WriteString("<output>WINNER: <worktree-name></output>\n")
+	sb.WriteString("<output>REASONING: <1-2 sentence summary></output>\n\n")
+	sb.WriteString("For example:\n")
+	sb.WriteString("<output>WINNER: my-task-1</output>\n")
+	sb.WriteString("<output>REASONING: This implementation correctly handles all edge cases and has cleaner code structure.</output>\n\n")
+	sb.WriteString("Explain your full reasoning before declaring the winner, then provide the summary.\n")
 
 	return sb.String()
 }
 
-func parseConvergeResponse(response string, worktrees []core.WorktreeInfo) string {
+func parseConvergeResponse(response string, worktrees []core.WorktreeInfo) (string, string) {
 	// Try to parse JSON response first
 	var jsonResp struct {
 		Result string `json:"result"`
@@ -263,20 +269,31 @@ func parseConvergeResponse(response string, worktrees []core.WorktreeInfo) strin
 		response = jsonResp.Result
 	}
 
+	var winner, reasoning string
+
 	// Look for "<output>WINNER: name</output>" pattern
 	if start := strings.Index(response, "<output>WINNER:"); start != -1 {
 		start += len("<output>WINNER:")
 		if end := strings.Index(response[start:], "</output>"); end != -1 {
-			winner := strings.TrimSpace(response[start : start+end])
+			candidate := strings.TrimSpace(response[start : start+end])
 			for _, wt := range worktrees {
-				if wt.Name == winner {
-					return winner
+				if wt.Name == candidate {
+					winner = candidate
+					break
 				}
 			}
 		}
 	}
 
-	return ""
+	// Look for "<output>REASONING: summary</output>" pattern
+	if start := strings.Index(response, "<output>REASONING:"); start != -1 {
+		start += len("<output>REASONING:")
+		if end := strings.Index(response[start:], "</output>"); end != -1 {
+			reasoning = strings.TrimSpace(response[start : start+end])
+		}
+	}
+
+	return winner, reasoning
 }
 
 func doAccept(worktreeName, gitRoot, autom8Path string, tasks []core.Task) error {
