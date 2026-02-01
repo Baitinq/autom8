@@ -156,7 +156,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 					wtStatus = SubtitleStyle.Render("[idle]")
 				}
 
-				fmt.Printf("%s%s%s %s\n", childPrefix, wtBranch, wtStatus, wt.Name)
+				// Add star prefix for the winning worktree
+				winnerPrefix := ""
+				if task.Winner != "" && wt.Name == task.Winner {
+					winnerPrefix = HighlightStyle.Render("★") + " "
+				}
+				fmt.Printf("%s%s%s %s%s\n", childPrefix, wtBranch, wtStatus, winnerPrefix, wt.Name)
 
 				// Show accept hint
 				if !wt.IsRunning && (wt.Phase == core.WorktreePhaseReady || wt.CommitsAhead != "0" || wt.HasChanges) {
