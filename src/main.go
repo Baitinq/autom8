@@ -84,8 +84,9 @@ It enables you to:
 }
 
 var newCmd = &cobra.Command{
-	Use:   "new",
-	Short: "Create a new task/prompt",
+	Use:     "new",
+	Aliases: []string{"add", "create"},
+	Short:   "Create a new task/prompt",
 	Long: `Create a new task with a prompt and optional verification criteria.
 
 Without flags, starts an interactive mode to guide you through task creation.
@@ -141,8 +142,9 @@ Shows a tree structure with:
 }
 
 var acceptCmd = &cobra.Command{
-	Use:   "accept <worktree-name>",
-	Short: "Merge a worktree branch into current branch and clean up",
+	Use:     "accept <worktree-name>",
+	Aliases: []string{"merge"},
+	Short:   "Merge a worktree branch into current branch and clean up",
 	Long: `Accept and merge a completed implementation from a worktree.
 
 This command will:
@@ -157,7 +159,7 @@ This command will:
 
 var deleteCmd = &cobra.Command{
 	Use:     "delete <task-id>",
-	Aliases: []string{"rm"},
+	Aliases: []string{"rm", "remove"},
 	Short:   "Delete a task by ID",
 	Long: `Delete a task from the task list.
 
@@ -169,8 +171,9 @@ until their dependents are deleted first.`,
 }
 
 var inspectCmd = &cobra.Command{
-	Use:   "inspect <worktree-name>",
-	Short: "Enter a worktree directory for inspection",
+	Use:     "inspect <worktree-name>",
+	Aliases: []string{"shell"},
+	Short:   "Enter a worktree directory for inspection",
 	Long: `Open a new shell in the specified worktree directory.
 
 This allows you to inspect the implementation, run tests, or make manual changes.
@@ -181,8 +184,9 @@ To return to your original directory, simply exit the shell (Ctrl+D or 'exit').`
 }
 
 var describeCmd = &cobra.Command{
-	Use:   "describe <task-id>",
-	Short: "Show detailed information about a task",
+	Use:     "describe <task-id>",
+	Aliases: []string{"info"},
+	Short:   "Show detailed information about a task",
 	Long: `Display detailed information about a specific task.
 
 Shows comprehensive task details including:
@@ -210,8 +214,9 @@ press Enter to keep the current value.`,
 }
 
 var pruneCmd = &cobra.Command{
-	Use:   "prune",
-	Short: "Delete all completed tasks",
+	Use:     "prune",
+	Aliases: []string{"clean"},
+	Short:   "Delete all completed tasks",
 	Long:  `Remove all tasks with status "completed" from the task list.`,
 	RunE:  runPrune,
 }
@@ -239,8 +244,9 @@ If no task ID is provided, all tasks with multiple worktrees will be evaluated.`
 }
 
 var showCmd = &cobra.Command{
-	Use:   "show <worktree-name>",
-	Short: "Show the diff between main and a worktree (PR-style)",
+	Use:     "show <worktree-name>",
+	Aliases: []string{"diff"},
+	Short:   "Show the diff between main and a worktree (PR-style)",
 	Long: `Display the changes in a worktree compared to the main branch.
 
 This shows the diff in a PR-style format, making it easy to review what
@@ -271,10 +277,10 @@ This context is passed to Claude via --system-prompt, allowing you to:
 
 // Hidden _worker command - runs implementation/review loops for a single worktree
 var workerCmd = &cobra.Command{
-	Use:    "_worker <worktree-name> <task-id> <base-branch>",
+	Use:    "_worker <worktree-name> <task-id> <base-branch> <max-iterations>",
 	Hidden: true,
 	Short:  "Internal: run implementation loop for a worktree",
-	Args:   cobra.ExactArgs(3),
+	Args:   cobra.ExactArgs(4),
 	RunE:   runWorker,
 }
 
@@ -1374,11 +1380,15 @@ func buildChatSystemPrompt(task *Task, worktreeName, branchName, gitLog, gitDiff
 
 // runWorker is the hidden _worker command that runs the implementation/review loop for a single worktree.
 // It is spawned as a detached subprocess by the implement command.
-// Args: worktree-name task-id base-branch
+// Args: worktree-name task-id base-branch max-iterations
 func runWorker(cmd *cobra.Command, args []string) error {
 	worktreeName := args[0]
 	taskID := args[1]
 	baseBranch := args[2]
+	maxIter := 0
+	if args[3] != "0" {
+		fmt.Sscanf(args[3], "%d", &maxIter)
+	}
 
 	// Verify we're in a git repository
 	if _, err := getGitRoot(); err != nil {
@@ -1457,8 +1467,8 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		iteration++
 
 		// Check max iterations limit
-		if maxIterations > 0 && iteration > maxIterations {
-			fmt.Fprintf(os.Stderr, "Worker %s: max iterations %d reached\n", worktreeName, maxIterations)
+		if maxIter > 0 && iteration > maxIter {
+			fmt.Fprintf(os.Stderr, "Worker %s: max iterations %d reached\n", worktreeName, maxIter)
 			return nil
 		}
 
@@ -2355,7 +2365,7 @@ func spawnWorkerForTask(task Task, gitRoot, worktreesDir, baseBranchID, suffix s
 
 	// Spawn detached worker subprocess
 	workerLogFile := filepath.Join(logsDir, "worker.log")
-	if err := spawnDetachedWorker(executable, instanceID, task.ID, baseBranch, workerLogFile); err != nil {
+	if err := spawnDetachedWorker(executable, instanceID, task.ID, baseBranch, maxIterations, workerLogFile); err != nil {
 		return fmt.Sprintf("  %s %s: failed to spawn worker: %v", errorStyle.Render("[error]"), instanceID, err), ""
 	}
 
@@ -2368,7 +2378,7 @@ func spawnWorkerForTask(task Task, gitRoot, worktreesDir, baseBranchID, suffix s
 }
 
 // spawnDetachedWorker spawns a detached worker subprocess that survives terminal close.
-func spawnDetachedWorker(executable, worktreeName, taskID, baseBranch, logFile string) error {
+func spawnDetachedWorker(executable, worktreeName, taskID, baseBranch string, maxIter int, logFile string) error {
 	// Open log file for worker output
 	log, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
@@ -2376,7 +2386,7 @@ func spawnDetachedWorker(executable, worktreeName, taskID, baseBranch, logFile s
 	}
 
 	// Build the worker command
-	workerCmd := exec.Command(executable, "_worker", worktreeName, taskID, baseBranch)
+	workerCmd := exec.Command(executable, "_worker", worktreeName, taskID, baseBranch, fmt.Sprintf("%d", maxIter))
 
 	// Set up process attributes for proper detachment
 	workerCmd.SysProcAttr = &syscall.SysProcAttr{
