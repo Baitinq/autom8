@@ -100,6 +100,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			statusBadge = StatusPendingStyle.Render("[pending]")
 		case "in-progress":
 			statusBadge = StatusInProgressStyle.Render("[in-progress]")
+		case "ready":
+			statusBadge = StatusReadyStyle.Render("[ready]")
 		case "completed":
 			statusBadge = StatusCompletedStyle.Render("[completed]")
 		default:

@@ -102,6 +102,9 @@ func runImplement(cmd *cobra.Command, args []string) error {
 				if task.Status == "completed" {
 					return fmt.Errorf("task '%s' is already completed", targetTaskID)
 				}
+				if task.Status == "ready" {
+					return fmt.Errorf("task '%s' is already ready (use 'autom8 converge' or 'autom8 accept')", targetTaskID)
+				}
 				pendingTasks = append(pendingTasks, task)
 				break
 			}
