@@ -11,6 +11,7 @@ import (
 )
 
 var (
+	nameFlag      string
 	promptFlag    string
 	criteriaFlags []string
 	dependsOnFlag string
@@ -28,14 +29,15 @@ With flags, creates the task directly (non-interactive mode).`,
   autom8 new
 
   # Non-interactive mode
-  autom8 new -p "Add login page" -c "Has email field" -c "Has password field"
+  autom8 new -n login-page -p "Add login page" -c "Has email field" -c "Has password field"
 
   # With dependency
-  autom8 new -p "Add logout button" -d task-123456789`,
+  autom8 new -n logout-button -p "Add logout button" -d login-page`,
 	RunE: runFeature,
 }
 
 func init() {
+	NewCmd.Flags().StringVarP(&nameFlag, "name", "n", "", "Task name (unique identifier)")
 	NewCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "Task prompt (non-interactive mode)")
 	NewCmd.Flags().StringArrayVarP(&criteriaFlags, "criteria", "c", []string{}, "Verification criteria (can be specified multiple times)")
 	NewCmd.Flags().StringVarP(&dependsOnFlag, "depends-on", "d", "", "Task ID this depends on")
@@ -47,21 +49,40 @@ func runFeature(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	var name string
 	var prompt string
 	var criteria []string
 	var dependsOn string
 
-	if promptFlag != "" {
-		// Non-interactive mode
+	// Load existing tasks (needed for both modes)
+	existingTasks, err := core.LoadTasks()
+	if err != nil {
+		return fmt.Errorf("error loading tasks: %w", err)
+	}
+
+	if nameFlag != "" || promptFlag != "" {
+		// Non-interactive mode (requires both name and prompt)
+		if nameFlag == "" {
+			return fmt.Errorf("task name is required (use -n flag)")
+		}
+		if promptFlag == "" {
+			return fmt.Errorf("task prompt is required (use -p flag)")
+		}
+		name = nameFlag
 		prompt = promptFlag
 		criteria = criteriaFlags
 		dependsOn = dependsOnFlag
+
+		// Validate name
+		if err := core.ValidateTaskName(name); err != nil {
+			return err
+		}
+		if !core.IsTaskNameUnique(existingTasks, name, "") {
+			return fmt.Errorf("task name '%s' already exists", name)
+		}
 	} else {
 		// Interactive mode with huh
 		var criteriaInput string
-
-		// Load existing tasks for dependency selection
-		existingTasks, _ := core.LoadTasks()
 
 		// Build dependency options
 		dependsOnOptions := []huh.Option[string]{
@@ -73,6 +94,22 @@ func runFeature(cmd *cobra.Command, args []string) error {
 		}
 
 		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Task Name").
+					Description("Unique identifier (alphanumeric, dashes, underscores, max 50 chars)").
+					Placeholder("my-task-name").
+					Value(&name).
+					Validate(func(s string) error {
+						if err := core.ValidateTaskName(s); err != nil {
+							return err
+						}
+						if !core.IsTaskNameUnique(existingTasks, s, "") {
+							return fmt.Errorf("task name '%s' already exists", s)
+						}
+						return nil
+					}),
+			),
 			huh.NewGroup(
 				huh.NewText().
 					Title("Task Prompt").
@@ -126,15 +163,10 @@ func runFeature(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no prompt provided")
 	}
 
-	tasks, err := core.LoadTasks()
-	if err != nil {
-		return fmt.Errorf("error loading tasks: %w", err)
-	}
-
 	// Validate dependency exists if specified
 	if dependsOn != "" {
 		found := false
-		for _, t := range tasks {
+		for _, t := range existingTasks {
 			if t.ID == dependsOn {
 				found = true
 				break
@@ -146,7 +178,7 @@ func runFeature(cmd *cobra.Command, args []string) error {
 	}
 
 	task := core.Task{
-		ID:                   fmt.Sprintf("task-%d", time.Now().UnixNano()),
+		ID:                   name,
 		Prompt:               prompt,
 		VerificationCriteria: criteria,
 		DependsOn:            dependsOn,
@@ -154,7 +186,7 @@ func runFeature(cmd *cobra.Command, args []string) error {
 		Status:               "pending",
 	}
 
-	tasks = append(tasks, task)
+	tasks := append(existingTasks, task)
 
 	if err := core.SaveTasks(tasks); err != nil {
 		return fmt.Errorf("error saving task: %w", err)
