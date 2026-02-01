@@ -135,7 +135,7 @@ func runConverge(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Printf("  %s %s\n", HighlightStyle.Render("[analyzing]"), core.Truncate(task.Prompt, 50))
-		fmt.Printf("    %s %s\n", SubtitleStyle.Render("ID:"), IDStyle.Render(task.ID))
+		fmt.Printf("    %s %s\n", SubtitleStyle.Render("ID:"), NameStyle.Render(task.ID))
 		fmt.Printf("    %s %d worktrees\n", SubtitleStyle.Render("Comparing:"), len(worktrees))
 
 		// Build the converge prompt
@@ -161,7 +161,7 @@ func runConverge(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		fmt.Printf("    %s %s\n", SuccessStyle.Render("[winner]"), HighlightStyle.Render(winner))
+		fmt.Printf("    %s %s\n", SuccessStyle.Render("[winner]"), NameStyle.Render(winner))
 
 		// Update task with winner
 		for i, t := range tasks {

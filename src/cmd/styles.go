@@ -38,6 +38,10 @@ var (
 	IDStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245"))
 
+	NameStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("36")).
+			Bold(true)
+
 	HighlightStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("99"))
 )

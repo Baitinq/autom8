@@ -100,7 +100,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 		// Print task header: name at top, prompt below
 		displayPrompt := core.Truncate(task.Prompt, 50)
-		fmt.Printf("%s%s%s %s %s\n", prefix, branch, statusBadge, SubtitleStyle.Render("Name:"), IDStyle.Render(task.ID))
+		fmt.Printf("%s%s%s %s %s\n", prefix, branch, statusBadge, SubtitleStyle.Render("Name:"), NameStyle.Render(task.ID))
 		fmt.Printf("%s%s %s\n", childPrefix, SubtitleStyle.Render("Prompt:"), displayPrompt)
 
 		// Print verification criteria
@@ -161,7 +161,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				if task.Winner != "" && wt.Name == task.Winner {
 					winnerPrefix = HighlightStyle.Render("★") + " "
 				}
-				fmt.Printf("%s%s%s %s%s\n", childPrefix, wtBranch, wtStatus, winnerPrefix, wt.Name)
+				fmt.Printf("%s%s%s %s%s\n", childPrefix, wtBranch, wtStatus, winnerPrefix, NameStyle.Render(wt.Name))
 
 				// Show accept hint
 				if !wt.IsRunning && (wt.Phase == core.WorktreePhaseReady || wt.CommitsAhead != "0" || wt.HasChanges) {

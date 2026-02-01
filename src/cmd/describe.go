@@ -88,7 +88,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		statusBadge = SubtitleStyle.Render(fmt.Sprintf("[%s]", string(task.Status)))
 	}
 
-	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Name:"), IDStyle.Render(task.ID))
+	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Name:"), NameStyle.Render(task.ID))
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Status:"), statusBadge)
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Created:"), task.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Println()
@@ -113,7 +113,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	if task.DependsOn != "" {
 		parentTask := taskMap[task.DependsOn]
 		fmt.Println(SubtitleStyle.Render("  Depends On:"))
-		fmt.Printf("    %s - %s\n", IDStyle.Render(task.DependsOn), core.Truncate(parentTask.Prompt, 50))
+		fmt.Printf("    %s - %s\n", NameStyle.Render(task.DependsOn), core.Truncate(parentTask.Prompt, 50))
 		fmt.Println()
 	}
 
@@ -122,7 +122,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		fmt.Println(SubtitleStyle.Render("  Dependents:"))
 		for _, depID := range dependents {
 			depTask := taskMap[depID]
-			fmt.Printf("    %s - %s\n", IDStyle.Render(depID), core.Truncate(depTask.Prompt, 50))
+			fmt.Printf("    %s - %s\n", NameStyle.Render(depID), core.Truncate(depTask.Prompt, 50))
 		}
 		fmt.Println()
 	}
@@ -143,7 +143,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 			} else {
 				wtStatus = SubtitleStyle.Render("[idle]")
 			}
-			fmt.Printf("    %s %s\n", wtStatus, wt.Name)
+			fmt.Printf("    %s %s\n", wtStatus, NameStyle.Render(wt.Name))
 			fmt.Printf("      %s %s\n", SubtitleStyle.Render("Branch:"), HighlightStyle.Render(wt.Branch))
 			fmt.Printf("      %s %s\n", SubtitleStyle.Render("Path:"), wt.Path)
 		}
