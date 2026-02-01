@@ -68,7 +68,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 			msg += fmt.Sprintf("  - %s\n", dep)
 		}
 		msg += "Delete the dependent tasks first, or use a different approach."
-		return fmt.Errorf(msg)
+		return fmt.Errorf("%s", msg)
 	}
 
 	// Clean up associated worktrees
