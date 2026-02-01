@@ -93,15 +93,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			childPrefix = prefix + "    "
 		}
 
-		// Status badge
+		// Status badge (tasks only use pending/in-progress/completed, not ready)
 		var statusBadge string
 		switch task.Status {
 		case "pending":
 			statusBadge = StatusPendingStyle.Render("[pending]")
 		case "in-progress":
 			statusBadge = StatusInProgressStyle.Render("[in-progress]")
-		case "ready":
-			statusBadge = StatusReadyStyle.Render("[ready]")
 		case "completed":
 			statusBadge = StatusCompletedStyle.Render("[completed]")
 		default:
@@ -140,6 +138,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 					wtStatus = StatusInProgressStyle.Render("[running]")
 				} else if wt.HasChanges {
 					wtStatus = StatusPendingStyle.Render("[modified]")
+				} else if wt.Ready {
+					wtStatus = StatusReadyStyle.Render("[ready]")
 				} else if wt.CommitsAhead != "0" {
 					wtStatus = StatusCompletedStyle.Render("[" + wt.CommitsAhead + " commits]")
 				} else {
@@ -149,7 +149,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				fmt.Printf("%s%s%s %s\n", childPrefix, wtBranch, wtStatus, wt.Name)
 
 				// Show accept hint
-				if !wt.IsRunning && (wt.CommitsAhead != "0" || wt.HasChanges) {
+				if !wt.IsRunning && (wt.Ready || wt.CommitsAhead != "0" || wt.HasChanges) {
 					wtChildPrefix := childPrefix + "│   "
 					if wtIsLast {
 						wtChildPrefix = childPrefix + "    "

@@ -425,11 +425,11 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 	worktreePath := filepath.Join(worktreesDir, instanceID)
 
 	branchName := fmt.Sprintf("autom8/%s", instanceID)
+	autom8Path := filepath.Dir(worktreesDir)
 
 	// Check if worktree already exists
 	if _, err := os.Stat(worktreePath); err == nil {
 		// Check if worker is already running (PID file is in logs directory, not worktree)
-		autom8Path := filepath.Dir(worktreesDir)
 		pidFile := filepath.Join(autom8Path, "logs", instanceID, core.WorkerPidFile)
 		if pidData, err := os.ReadFile(pidFile); err == nil {
 			if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
@@ -439,6 +439,12 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 			}
 		}
 		return fmt.Sprintf("  %s %s (already exists, no active worker)", SubtitleStyle.Render("[skip]"), instanceID)
+	}
+
+	// Clear any stale status file for a previous worktree with the same name.
+	statusPath := filepath.Join(autom8Path, "logs", instanceID, core.WorktreeStatusFile)
+	if err := os.Remove(statusPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Sprintf("  %s %s: failed to clear stale status: %v", ErrorStyle.Render("[error]"), instanceID, err)
 	}
 
 	// Determine base branch for worktree creation and review
@@ -457,7 +463,6 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 	}
 
 	// Create logs directory for this worktree
-	autom8Path := filepath.Dir(worktreesDir)
 	logsDir := filepath.Join(autom8Path, "logs", instanceID)
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return fmt.Sprintf("  %s %s: failed to create logs dir: %v", ErrorStyle.Render("[error]"), instanceID, err)

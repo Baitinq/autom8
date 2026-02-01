@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/baitinq/autom8/src/core"
 	"github.com/spf13/cobra"
@@ -144,9 +145,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("review failed: %w", reviewErr)
 			}
 
-			// Mark task as ready (at least one implementation is complete)
-			if err := markTaskReady(workerTaskID); err != nil {
-				return fmt.Errorf("failed to mark task as ready: %w", err)
+			// Mark this worktree as ready by writing status file
+			status := &core.WorktreeStatus{
+				Status:      "ready",
+				CompletedAt: time.Now(),
+			}
+			if err := core.WriteWorktreeStatus(worktreeName, status); err != nil {
+				return fmt.Errorf("failed to write worktree status: %w", err)
 			}
 			return nil // Success
 		}
@@ -211,23 +216,6 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 
 		// Continue to next review iteration
 	}
-}
-
-// markTaskReady updates the task status to "ready" if it's currently "in-progress".
-// This is safe to call from multiple workers - only the first one transitions the status.
-func markTaskReady(taskID string) error {
-	tasks, err := core.LoadTasks()
-	if err != nil {
-		return err
-	}
-
-	for i, t := range tasks {
-		if t.ID == taskID && t.Status == "in-progress" {
-			tasks[i].Status = "ready"
-			return core.SaveTasks(tasks)
-		}
-	}
-	return nil // Task not found or already in different status
 }
 
 // buildFixPrompt constructs the prompt for fixing issues based on reviewer feedback.
