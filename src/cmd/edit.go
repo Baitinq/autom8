@@ -10,13 +10,13 @@ import (
 )
 
 var EditCmd = &cobra.Command{
-	Use:   "edit <task-id>",
+	Use:   "edit <task-name>",
 	Short: "Edit an existing task",
-	Long: `Edit an existing task's prompt, verification criteria, or dependency.
+	Long: `Edit an existing task's name, prompt, verification criteria, or dependency.
 
 Starts an interactive editor to modify the task. All fields are optional -
 press Enter to keep the current value.`,
-	Example: `  autom8 edit task-123456789`,
+	Example: `  autom8 edit my-task`,
 	Args:    cobra.ExactArgs(1),
 	RunE:    runEdit,
 }
@@ -45,10 +45,11 @@ func runEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	if task == nil {
-		return fmt.Errorf("task '%s' not found\nRun 'autom8 status' to see task IDs", taskID)
+		return fmt.Errorf("task '%s' not found\nRun 'autom8 status' to see task names", taskID)
 	}
 
 	// Prepare current values for editing
+	name := task.ID
 	prompt := task.Prompt
 	criteriaInput := strings.Join(task.VerificationCriteria, "\n")
 	dependsOn := task.DependsOn
@@ -66,6 +67,22 @@ func runEdit(cmd *cobra.Command, args []string) error {
 
 	// Interactive editing with huh
 	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Task Name").
+				Description("Unique identifier (alphanumeric, dashes, underscores, max 50 chars)").
+				Value(&name).
+				Validate(func(s string) error {
+					if err := core.ValidateTaskName(s); err != nil {
+						return err
+					}
+					// Allow keeping the same name, but check uniqueness for new names
+					if s != taskID && !core.IsTaskNameUnique(tasks, s, taskID) {
+						return fmt.Errorf("task name '%s' already exists", s)
+					}
+					return nil
+				}),
+		),
 		huh.NewGroup(
 			huh.NewText().
 				Title("Task Prompt").
@@ -125,16 +142,26 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		if !found {
 			return fmt.Errorf("dependency task '%s' not found", dependsOn)
 		}
-		// Check for circular dependency
-		if dependsOn == taskID {
+		// Check for circular dependency (use new name if changed)
+		if dependsOn == name {
 			return fmt.Errorf("task cannot depend on itself")
 		}
 	}
 
 	// Update the task
+	tasks[taskIndex].ID = name
 	tasks[taskIndex].Prompt = prompt
 	tasks[taskIndex].VerificationCriteria = criteria
 	tasks[taskIndex].DependsOn = dependsOn
+
+	// Update any tasks that depend on the old name
+	if name != taskID {
+		for i := range tasks {
+			if tasks[i].DependsOn == taskID {
+				tasks[i].DependsOn = name
+			}
+		}
+	}
 
 	if err := core.SaveTasks(tasks); err != nil {
 		return fmt.Errorf("error saving task: %w", err)
@@ -142,6 +169,6 @@ func runEdit(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fmt.Println(SuccessStyle.Render("Task updated successfully!"))
-	fmt.Printf("  %s %s\n", SubtitleStyle.Render("ID:"), IDStyle.Render(task.ID))
+	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Name:"), IDStyle.Render(name))
 	return nil
 }
