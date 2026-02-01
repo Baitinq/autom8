@@ -18,8 +18,10 @@ const (
 
 // WorktreeStatus represents the status of a worktree stored in status.json
 type WorktreeStatus struct {
-	Status      string    `json:"status"`       // "running", "ready", "idle"
-	CompletedAt time.Time `json:"completed_at,omitempty"`
+	Status       string    `json:"status"`                  // "implementing", "reviewing", "ready", "idle"
+	Iteration    int       `json:"iteration,omitempty"`     // Current implementation iteration (1-based)
+	FixIteration int       `json:"fix_iteration,omitempty"` // Current review fix iteration (1-based)
+	CompletedAt  time.Time `json:"completed_at,omitempty"`
 }
 
 // WorktreeInfo holds information about a worktree's status
@@ -30,7 +32,10 @@ type WorktreeInfo struct {
 	CommitsAhead string
 	HasChanges   bool
 	IsRunning    bool
-	Ready        bool // True if this worktree's implementation is complete and reviewed
+	Ready        bool   // True if this worktree's implementation is complete and reviewed
+	Phase        string // Current phase: "implementing", "reviewing", "ready", "idle"
+	Iteration    int    // Implementation iteration count (when Phase == "implementing")
+	FixIteration int    // Review fix iteration count (when Phase == "reviewing")
 }
 
 func LoadPids() (map[string]int, error) {
@@ -136,8 +141,11 @@ func GetWorktreeInfo(worktreesDir, worktreeName string, pids map[string]int) Wor
 		}
 	}
 
-	// Read worktree status file to check if ready
+	// Read worktree status file to get phase and iteration info
 	if status, err := ReadWorktreeStatus(worktreeName); err == nil {
+		info.Phase = status.Status
+		info.Iteration = status.Iteration
+		info.FixIteration = status.FixIteration
 		info.Ready = status.Status == "ready"
 	}
 

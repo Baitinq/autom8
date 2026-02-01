@@ -136,7 +136,16 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 				// Worktree status
 				var wtStatus string
-				if wt.IsRunning {
+				if wt.IsRunning && wt.Phase == "implementing" {
+					wtStatus = StatusInProgressStyle.Render(fmt.Sprintf("[implementing (%d)]", wt.Iteration))
+				} else if wt.IsRunning && wt.Phase == "reviewing" {
+					if wt.FixIteration > 0 {
+						wtStatus = StatusInProgressStyle.Render(fmt.Sprintf("[reviewing (fix %d)]", wt.FixIteration))
+					} else {
+						wtStatus = StatusInProgressStyle.Render("[reviewing]")
+					}
+				} else if wt.IsRunning {
+					// Fallback for running without phase info
 					wtStatus = StatusInProgressStyle.Render("[running]")
 				} else if wt.HasChanges {
 					wtStatus = StatusPendingStyle.Render("[modified]")

@@ -120,6 +120,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("max iterations %d reached", workerMaxIter)
 		}
 
+		// Write status: implementing with iteration count
+		implStatus := &core.WorktreeStatus{
+			Status:    "implementing",
+			Iteration: iteration,
+		}
+		core.WriteWorktreeStatus(worktreeName, implStatus)
+
 		// Create log file for this iteration
 		logFile := filepath.Join(logsDir, fmt.Sprintf("iteration-%d.log", iteration))
 
@@ -162,11 +169,21 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 // runWorkerReviewLoop runs the review loop after implementation completes.
 func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch string) error {
+	// Extract worktree name from path for status updates
+	worktreeName := filepath.Base(worktreePath)
+
 	reviewIteration := 0
 	fixIteration := 0
 
 	for {
 		reviewIteration++
+
+		// Write status: reviewing with fix iteration count
+		reviewStatus := &core.WorktreeStatus{
+			Status:       "reviewing",
+			FixIteration: fixIteration,
+		}
+		core.WriteWorktreeStatus(worktreeName, reviewStatus)
 
 		// Create log file for this review iteration
 		reviewLogFile := filepath.Join(logsDir, fmt.Sprintf("review-iteration-%d.log", reviewIteration))
