@@ -132,20 +132,32 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		fmt.Println(SubtitleStyle.Render("  Worktrees:"))
 		for _, wt := range worktrees {
 			var wtStatus string
-			if wt.IsRunning {
+			if wt.IsRunning && wt.Phase == core.WorktreePhaseImplementing {
+				wtStatus = StatusInProgressStyle.Render(fmt.Sprintf("[implementing (%d)]", wt.Iteration))
+			} else if wt.IsRunning && wt.Phase == core.WorktreePhaseReviewing {
+				if wt.FixIteration > 0 {
+					wtStatus = StatusInProgressStyle.Render(fmt.Sprintf("[reviewing (fix %d)]", wt.FixIteration))
+				} else {
+					wtStatus = StatusInProgressStyle.Render("[reviewing]")
+				}
+			} else if wt.IsRunning {
+				// Fallback for running without phase info
 				wtStatus = StatusInProgressStyle.Render("[running]")
 			} else if wt.Phase == core.WorktreePhaseReady {
 				wtStatus = StatusReadyStyle.Render("[ready]")
-			} else if wt.HasChanges {
-				wtStatus = StatusPendingStyle.Render("[modified]")
-			} else if wt.CommitsAhead != "0" {
-				wtStatus = StatusCompletedStyle.Render("[" + wt.CommitsAhead + " commits]")
+			} else if wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing || wt.HasChanges {
+				// Non-running worktree with implementing/reviewing phase or uncommitted changes = error
+				wtStatus = StatusErrorStyle.Render("[error]")
 			} else {
 				wtStatus = SubtitleStyle.Render("[idle]")
 			}
 			fmt.Printf("    %s %s\n", wtStatus, NameStyle.Render(wt.Name))
 			fmt.Printf("      %s %s\n", SubtitleStyle.Render("Branch:"), HighlightStyle.Render(wt.Branch))
 			fmt.Printf("      %s %s\n", SubtitleStyle.Render("Path:"), wt.Path)
+			// Show accept hint only for ready worktrees
+			if !wt.IsRunning && wt.Phase == core.WorktreePhaseReady {
+				fmt.Printf("      %s autom8 accept %s\n", HighlightStyle.Render("→"), wt.Name)
+			}
 		}
 	} else if task.Status == core.TaskStatusPending {
 		fmt.Println(SubtitleStyle.Render("  Worktrees:"))

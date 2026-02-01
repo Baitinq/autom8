@@ -146,12 +146,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				} else if wt.IsRunning {
 					// Fallback for running without phase info
 					wtStatus = StatusInProgressStyle.Render("[running]")
-				} else if wt.HasChanges {
-					wtStatus = StatusPendingStyle.Render("[modified]")
 				} else if wt.Phase == core.WorktreePhaseReady {
 					wtStatus = StatusReadyStyle.Render("[ready]")
-				} else if wt.CommitsAhead != "0" {
-					wtStatus = StatusCompletedStyle.Render("[" + wt.CommitsAhead + " commits]")
+				} else if wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing || wt.HasChanges {
+					// Non-running worktree with implementing/reviewing phase or uncommitted changes = error
+					wtStatus = StatusErrorStyle.Render("[error]")
 				} else {
 					wtStatus = SubtitleStyle.Render("[idle]")
 				}
@@ -163,8 +162,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				}
 				fmt.Printf("%s%s%s %s%s\n", childPrefix, wtBranch, wtStatus, winnerPrefix, NameStyle.Render(wt.Name))
 
-				// Show accept hint
-				if !wt.IsRunning && (wt.Phase == core.WorktreePhaseReady || wt.CommitsAhead != "0" || wt.HasChanges) {
+				// Show accept hint only for ready worktrees
+				if !wt.IsRunning && wt.Phase == core.WorktreePhaseReady {
 					wtChildPrefix := childPrefix + "│   "
 					if wtIsLast {
 						wtChildPrefix = childPrefix + "    "
