@@ -136,10 +136,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				var wtStatus string
 				if wt.IsRunning {
 					wtStatus = StatusInProgressStyle.Render("[running]")
-				} else if wt.Ready {
-					wtStatus = StatusReadyStyle.Render("[ready]")
 				} else if wt.HasChanges {
 					wtStatus = StatusPendingStyle.Render("[modified]")
+				} else if wt.Ready {
+					wtStatus = StatusReadyStyle.Render("[ready]")
 				} else if wt.CommitsAhead != "0" {
 					wtStatus = StatusCompletedStyle.Render("[" + wt.CommitsAhead + " commits]")
 				} else {
