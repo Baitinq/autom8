@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -142,4 +143,34 @@ func Truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// BaseTaskIDFromWorktree extracts the task ID from a worktree name.
+// Worktree names follow patterns like:
+//   - Independent: {task-name}-{instance}  (e.g., "my-task-1")
+//   - Dependent: {task-name}-{parent-instance}-{instance}  (e.g., "my-task-2-1")
+//
+// This function iterates through the name parts and matches against known task IDs
+// to correctly identify the task even for dependent tasks with multiple numeric suffixes.
+func BaseTaskIDFromWorktree(name string, taskIDs map[string]struct{}) (string, bool) {
+	parts := strings.Split(name, "-")
+	if len(parts) < 2 {
+		return "", false
+	}
+	// Last part must be numeric (instance number)
+	if _, err := strconv.Atoi(parts[len(parts)-1]); err != nil {
+		return "", false
+	}
+	// Try to match task IDs by progressively removing numeric suffixes
+	for i := len(parts) - 1; i >= 1; i-- {
+		if _, err := strconv.Atoi(parts[i]); err != nil {
+			// Hit a non-numeric part, stop iterating
+			break
+		}
+		candidate := strings.Join(parts[:i], "-")
+		if _, ok := taskIDs[candidate]; ok {
+			return candidate, true
+		}
+	}
+	return "", false
 }

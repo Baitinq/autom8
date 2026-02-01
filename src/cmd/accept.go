@@ -98,17 +98,28 @@ func runAccept(cmd *cobra.Command, args []string) error {
 	fmt.Printf("%s", string(mergeOutput))
 
 	// Mark the task as completed
-	// Worktree name format: {task-name}-{instance} (e.g., my-task-1)
-	// Extract task ID by removing the last -{instance} suffix
-	taskID := worktreeName
-	if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
-		taskID = worktreeName[:lastDash]
-	}
-
 	tasks, err := core.LoadTasks()
 	if err != nil {
 		fmt.Printf("%s could not load tasks to update status: %v\n", ErrorStyle.Render("Warning:"), err)
 	} else {
+		// Build task ID set for worktree name matching
+		taskIDs := make(map[string]struct{})
+		for _, t := range tasks {
+			taskIDs[t.ID] = struct{}{}
+		}
+
+		// Extract task ID from worktree name using proper matching
+		// This handles both independent ({task-name}-{instance}) and
+		// dependent ({task-name}-{parent-instance}-{instance}) worktree names
+		taskID, ok := core.BaseTaskIDFromWorktree(worktreeName, taskIDs)
+		if !ok {
+			// Fallback: try simple last-dash removal for backwards compatibility
+			taskID = worktreeName
+			if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
+				taskID = worktreeName[:lastDash]
+			}
+		}
+
 		for i, t := range tasks {
 			if t.ID == taskID {
 				tasks[i].Status = "completed"

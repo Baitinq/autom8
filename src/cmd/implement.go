@@ -132,7 +132,7 @@ func findParentSuffixes(worktreesDir, taskID string, taskIDs map[string]struct{}
 			continue
 		}
 		name := entry.Name()
-		baseID, ok := baseTaskIDFromWorktree(name, taskIDs)
+		baseID, ok := core.BaseTaskIDFromWorktree(name, taskIDs)
 		if !ok || baseID != taskID {
 			continue
 		}
@@ -159,26 +159,6 @@ func findParentSuffixes(worktreesDir, taskID string, taskIDs map[string]struct{}
 	}
 
 	return suffixes
-}
-
-func baseTaskIDFromWorktree(name string, taskIDs map[string]struct{}) (string, bool) {
-	parts := strings.Split(name, "-")
-	if len(parts) < 2 {
-		return "", false
-	}
-	if _, err := strconv.Atoi(parts[len(parts)-1]); err != nil {
-		return "", false
-	}
-	for i := len(parts) - 1; i >= 1; i-- {
-		if _, err := strconv.Atoi(parts[i]); err != nil {
-			break
-		}
-		candidate := strings.Join(parts[:i], "-")
-		if _, ok := taskIDs[candidate]; ok {
-			return candidate, true
-		}
-	}
-	return "", false
 }
 
 func findHighestChildInstance(worktreesDir, taskID, depSuffix string) int {

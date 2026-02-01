@@ -34,6 +34,27 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
+	if len(tasks) == 0 {
+		fmt.Println(SubtitleStyle.Render("No tasks found. Use 'autom8 new' to create one."))
+		return nil
+	}
+
+	// Build task ID set and dependency tree
+	taskIDs := make(map[string]struct{})
+	taskMap := make(map[string]core.Task)
+	childrenMap := make(map[string][]string) // parent ID -> child IDs
+	var rootTasks []string
+
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
+		taskMap[t.ID] = t
+		if t.DependsOn == "" {
+			rootTasks = append(rootTasks, t.ID)
+		} else {
+			childrenMap[t.DependsOn] = append(childrenMap[t.DependsOn], t.ID)
+		}
+	}
+
 	// Get worktrees and PIDs
 	autom8Path, _ := core.GetAutom8Dir()
 	worktreesDir := filepath.Join(autom8Path, "worktrees")
@@ -46,32 +67,17 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			worktreeName := entry.Name()
-			// Extract task ID: {task-name}-{instance} -> {task-name}
-			taskID := worktreeName
-			if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
-				taskID = worktreeName[:lastDash]
+			// Extract task ID from worktree name using proper matching
+			taskID, ok := core.BaseTaskIDFromWorktree(worktreeName, taskIDs)
+			if !ok {
+				// Fallback: try simple last-dash removal for backwards compatibility
+				taskID = worktreeName
+				if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
+					taskID = worktreeName[:lastDash]
+				}
 			}
 			info := core.GetWorktreeInfo(worktreesDir, worktreeName, pids)
 			worktreesByTask[taskID] = append(worktreesByTask[taskID], info)
-		}
-	}
-
-	if len(tasks) == 0 {
-		fmt.Println(SubtitleStyle.Render("No tasks found. Use 'autom8 new' to create one."))
-		return nil
-	}
-
-	// Build dependency tree
-	taskMap := make(map[string]core.Task)
-	childrenMap := make(map[string][]string) // parent ID -> child IDs
-	var rootTasks []string
-
-	for _, t := range tasks {
-		taskMap[t.ID] = t
-		if t.DependsOn == "" {
-			rootTasks = append(rootTasks, t.ID)
-		} else {
-			childrenMap[t.DependsOn] = append(childrenMap[t.DependsOn], t.ID)
 		}
 	}
 
