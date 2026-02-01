@@ -355,14 +355,15 @@ func runReviewLoop(task core.Task, worktreePath, logsDir, baseBranch string) str
 		// Create log file for this review iteration
 		reviewLogFile := filepath.Join(logsDir, fmt.Sprintf("review-iteration-%d.log", reviewIteration))
 
-		// Run codex review with base branch
-		codexCmd := exec.Command("codex", "review", "--base", baseBranch, reviewPrompt)
+		// Run codex review with base branch (prompt via stdin using "-")
+		codexCmd := exec.Command("codex", "review", "--base", baseBranch, "-")
 		codexCmd.Dir = worktreePath
+		codexCmd.Stdin = strings.NewReader(reviewPrompt)
 
-		output, err := codexCmd.Output()
+		output, err := codexCmd.CombinedOutput()
 		if err != nil {
-			// Log the error
-			os.WriteFile(reviewLogFile, []byte(fmt.Sprintf("ERROR: %v\n%s", err, string(output))), 0644)
+			// Log the error with full output
+			os.WriteFile(reviewLogFile, []byte(fmt.Sprintf("ERROR: %v\n\nOutput:\n%s", err, string(output))), 0644)
 			return fmt.Sprintf("review iteration %d failed: %v", reviewIteration, err)
 		}
 
@@ -387,10 +388,10 @@ func runReviewLoop(task core.Task, worktreePath, logsDir, baseBranch string) str
 		fixCmd := exec.Command("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", fixPrompt)
 		fixCmd.Dir = worktreePath
 
-		fixOutput, err := fixCmd.Output()
+		fixOutput, err := fixCmd.CombinedOutput()
 		if err != nil {
-			// Log the error
-			os.WriteFile(fixLogFile, []byte(fmt.Sprintf("ERROR: %v\n%s", err, string(fixOutput))), 0644)
+			// Log the error with full output
+			os.WriteFile(fixLogFile, []byte(fmt.Sprintf("ERROR: %v\n\nOutput:\n%s", err, string(fixOutput))), 0644)
 			return fmt.Sprintf("fix iteration %d failed: %v", fixIteration, err)
 		}
 
