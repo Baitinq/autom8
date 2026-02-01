@@ -22,11 +22,11 @@ var (
 )
 
 var ImplementCmd = &cobra.Command{
-	Use:   "implement [task-id]",
+	Use:   "implement [task-name]",
 	Short: "Implement pending tasks using AI",
 	Long: `Launch Claude AI agents to implement pending tasks.
 
-If a task ID is provided, only that task will be implemented.
+If a task name is provided, only that task will be implemented.
 Otherwise, all pending tasks will be implemented.
 
 Each agent runs in an isolated git worktree, allowing multiple parallel
@@ -37,11 +37,11 @@ instance of its parent task.`,
   autom8 implement
 
   # Implement a specific task
-  autom8 implement task-123456789
+  autom8 implement my-task
 
   # Multiple parallel implementations
   autom8 implement -n 3
-  autom8 implement task-123456789 -n 3`,
+  autom8 implement my-task -n 3`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runImplement,
 }

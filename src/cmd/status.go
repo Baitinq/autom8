@@ -46,7 +46,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			worktreeName := entry.Name()
-			// Extract task ID: task-{timestamp}-{instance} -> task-{timestamp}
+			// Extract task ID: {task-name}-{instance} -> {task-name}
 			taskID := worktreeName
 			if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
 				taskID = worktreeName[:lastDash]
@@ -108,7 +108,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 		// Print task header
 		fmt.Printf("%s%s%s %s\n", prefix, branch, statusBadge, core.Truncate(task.Prompt, 50))
-		fmt.Printf("%s%s %s\n", childPrefix, SubtitleStyle.Render("ID:"), IDStyle.Render(task.ID))
+		fmt.Printf("%s%s %s\n", childPrefix, SubtitleStyle.Render("Name:"), IDStyle.Render(task.ID))
 
 		// Print verification criteria
 		if len(task.VerificationCriteria) > 0 {

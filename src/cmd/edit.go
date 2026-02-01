@@ -10,34 +10,39 @@ import (
 )
 
 var (
+	editNameFlag      string
 	editPromptFlag    string
 	editCriteriaFlags []string
 	editDependsOnFlag string
 )
 
 var EditCmd = &cobra.Command{
-	Use:   "edit <task-id>",
+	Use:   "edit <task-name>",
 	Short: "Edit an existing task",
-	Long: `Edit an existing task's prompt, verification criteria, or dependency.
+	Long: `Edit an existing task's name, prompt, verification criteria, or dependency.
 
 Without flags, starts an interactive editor to modify the task.
 With flags, updates the task directly (non-interactive mode).`,
 	Example: `  # Interactive mode
-  autom8 edit task-123456789
+  autom8 edit my-task
+
+  # Non-interactive mode - rename task
+  autom8 edit my-task -n new-task-name
 
   # Non-interactive mode - update prompt only
-  autom8 edit task-123456789 -p "New prompt text"
+  autom8 edit my-task -p "New prompt text"
 
   # Non-interactive mode - replace criteria
-  autom8 edit task-123456789 -c "criterion 1" -c "criterion 2"
+  autom8 edit my-task -c "criterion 1" -c "criterion 2"
 
   # Non-interactive mode - combine flags
-  autom8 edit task-123456789 -p "New prompt" -c "New criterion" -d task-987654321`,
+  autom8 edit my-task -n renamed-task -p "New prompt" -c "New criterion" -d other-task`,
 	Args: cobra.ExactArgs(1),
 	RunE: runEdit,
 }
 
 func init() {
+	EditCmd.Flags().StringVarP(&editNameFlag, "name", "n", "", "Set/replace the task name")
 	EditCmd.Flags().StringVarP(&editPromptFlag, "prompt", "p", "", "Set/replace the task prompt")
 	EditCmd.Flags().StringArrayVarP(&editCriteriaFlags, "criteria", "c", []string{}, "Set/replace verification criteria (can be specified multiple times)")
 	EditCmd.Flags().StringVarP(&editDependsOnFlag, "depends-on", "d", "", "Set/change dependency task ID (use empty string to remove)")
@@ -67,18 +72,32 @@ func runEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	if task == nil {
-		return fmt.Errorf("task '%s' not found\nRun 'autom8 status' to see task IDs", taskID)
+		return fmt.Errorf("task '%s' not found\nRun 'autom8 status' to see task names", taskID)
 	}
 
 	// Check if any flags were provided for non-interactive mode
-	hasFlags := cmd.Flags().Changed("prompt") || cmd.Flags().Changed("criteria") || cmd.Flags().Changed("depends-on")
+	hasFlags := cmd.Flags().Changed("name") || cmd.Flags().Changed("prompt") || cmd.Flags().Changed("criteria") || cmd.Flags().Changed("depends-on")
 
+	var name string
 	var prompt string
 	var criteria []string
 	var dependsOn string
 
 	if hasFlags {
 		// Non-interactive mode: apply flag values or keep existing
+		if cmd.Flags().Changed("name") {
+			name = editNameFlag
+			// Validate new name
+			if err := core.ValidateTaskName(name); err != nil {
+				return err
+			}
+			if !core.IsTaskNameUnique(tasks, name, taskID) {
+				return fmt.Errorf("task name '%s' already exists", name)
+			}
+		} else {
+			name = taskID
+		}
+
 		if cmd.Flags().Changed("prompt") {
 			prompt = editPromptFlag
 		} else {
@@ -98,6 +117,7 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		// Interactive mode
+		name = task.ID
 		prompt = task.Prompt
 		criteriaInput := strings.Join(task.VerificationCriteria, "\n")
 		dependsOn = task.DependsOn
@@ -115,6 +135,22 @@ func runEdit(cmd *cobra.Command, args []string) error {
 
 		// Interactive editing with huh
 		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Task Name").
+					Description("Unique identifier (alphanumeric, dashes, underscores, max 50 chars)").
+					Value(&name).
+					Validate(func(s string) error {
+						if err := core.ValidateTaskName(s); err != nil {
+							return err
+						}
+						// Allow keeping the same name, but check uniqueness for new names
+						if s != taskID && !core.IsTaskNameUnique(tasks, s, taskID) {
+							return fmt.Errorf("task name '%s' already exists", s)
+						}
+						return nil
+					}),
+			),
 			huh.NewGroup(
 				huh.NewText().
 					Title("Task Prompt").
@@ -180,15 +216,25 @@ func runEdit(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("dependency task '%s' not found", dependsOn)
 		}
 		// Check for circular dependency
-		if dependsOn == taskID {
+		if dependsOn == name {
 			return fmt.Errorf("task cannot depend on itself")
 		}
 	}
 
 	// Update the task
+	tasks[taskIndex].ID = name
 	tasks[taskIndex].Prompt = prompt
 	tasks[taskIndex].VerificationCriteria = criteria
 	tasks[taskIndex].DependsOn = dependsOn
+
+	// Update any tasks that depend on the old name
+	if name != taskID {
+		for i := range tasks {
+			if tasks[i].DependsOn == taskID {
+				tasks[i].DependsOn = name
+			}
+		}
+	}
 
 	if err := core.SaveTasks(tasks); err != nil {
 		return fmt.Errorf("error saving task: %w", err)
@@ -196,6 +242,6 @@ func runEdit(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fmt.Println(SuccessStyle.Render("Task updated successfully!"))
-	fmt.Printf("  %s %s\n", SubtitleStyle.Render("ID:"), IDStyle.Render(task.ID))
+	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Name:"), IDStyle.Render(name))
 	return nil
 }

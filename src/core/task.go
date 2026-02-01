@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -94,6 +95,44 @@ func SaveTasks(tasks []Task) error {
 	}
 
 	return os.WriteFile(tasksPath, data, 0644)
+}
+
+// MaxTaskNameLength is the maximum allowed length for task names.
+const MaxTaskNameLength = 50
+
+// taskNameRegex validates task names: alphanumeric, dashes, and underscores only.
+var taskNameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// ValidateTaskName checks that a task name follows the naming rules:
+// - No spaces
+// - Alphanumeric with dashes and underscores allowed
+// - Reasonable max length (50 chars)
+// - Must start with alphanumeric character
+func ValidateTaskName(name string) error {
+	if name == "" {
+		return fmt.Errorf("task name cannot be empty")
+	}
+	if len(name) > MaxTaskNameLength {
+		return fmt.Errorf("task name cannot exceed %d characters", MaxTaskNameLength)
+	}
+	if strings.Contains(name, " ") {
+		return fmt.Errorf("task name cannot contain spaces")
+	}
+	if !taskNameRegex.MatchString(name) {
+		return fmt.Errorf("task name must start with alphanumeric and contain only alphanumeric characters, dashes, and underscores")
+	}
+	return nil
+}
+
+// IsTaskNameUnique checks if the given name is unique among existing tasks.
+// If excludeID is non-empty, that task ID is excluded from the check (useful for editing).
+func IsTaskNameUnique(tasks []Task, name string, excludeID string) bool {
+	for _, t := range tasks {
+		if t.ID == name && t.ID != excludeID {
+			return false
+		}
+	}
+	return true
 }
 
 // Truncate truncates a string to maxLen characters, replacing newlines with spaces.

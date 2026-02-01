@@ -11,19 +11,19 @@ import (
 )
 
 var DescribeCmd = &cobra.Command{
-	Use:     "describe <task-id>",
+	Use:     "describe <task-name>",
 	Aliases: []string{"info"},
 	Short:   "Show detailed information about a task",
 	Long: `Display detailed information about a specific task.
 
 Shows comprehensive task details including:
-  - Task ID and creation time
+  - Task name and creation time
   - Full prompt text
   - All verification criteria
   - Dependency information
   - Current status
   - Associated worktrees and their state`,
-	Example: `  autom8 describe task-123456789`,
+	Example: `  autom8 describe my-task`,
 	Args:    cobra.ExactArgs(1),
 	RunE:    runDescribe,
 }
@@ -50,7 +50,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	if task == nil {
-		return fmt.Errorf("task '%s' not found\nRun 'autom8 status' to see task IDs", taskID)
+		return fmt.Errorf("task '%s' not found\nRun 'autom8 status' to see task names", taskID)
 	}
 
 	// Build task map for dependency lookup
@@ -79,7 +79,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			worktreeName := entry.Name()
-			// Extract task ID: task-{timestamp}-{instance} -> task-{timestamp}
+			// Extract task ID: {task-name}-{instance} -> {task-name}
 			wtTaskID := worktreeName
 			if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
 				wtTaskID = worktreeName[:lastDash]
@@ -108,7 +108,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		statusBadge = SubtitleStyle.Render(fmt.Sprintf("[%s]", task.Status))
 	}
 
-	fmt.Printf("  %s %s\n", SubtitleStyle.Render("ID:"), IDStyle.Render(task.ID))
+	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Name:"), IDStyle.Render(task.ID))
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Status:"), statusBadge)
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Created:"), task.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Println()

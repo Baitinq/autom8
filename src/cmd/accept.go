@@ -22,7 +22,7 @@ This command will:
   2. Merge the worktree's branch into your current branch
   3. Remove the worktree directory
   4. Delete the merged branch`,
-	Example: `  autom8 accept task-123456789-1`,
+	Example: `  autom8 accept my-task-1`,
 	Args:    cobra.ExactArgs(1),
 	RunE:    runAccept,
 }
@@ -115,7 +115,7 @@ func runAccept(cmd *cobra.Command, args []string) error {
 	}
 
 	// Mark the task as completed
-	// Worktree name format: task-{timestamp}-{instance} (e.g., task-1769877109920033000-1)
+	// Worktree name format: {task-name}-{instance} (e.g., my-task-1)
 	// Extract task ID by removing the last -{instance} suffix
 	taskID := worktreeName
 	if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {

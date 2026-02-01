@@ -25,7 +25,7 @@ This context is passed to Claude via --system-prompt, allowing you to:
   - Ask questions about what was implemented
   - Give instructions to continue or fix the implementation
   - Discuss the approach and make changes interactively`,
-	Example: `  autom8 chat task-123456789-1`,
+	Example: `  autom8 chat my-task-1`,
 	Args:    cobra.ExactArgs(1),
 	RunE:    runChat,
 }
@@ -45,7 +45,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("worktree '%s' not found\nRun 'autom8 status' to see available worktrees", worktreeName)
 	}
 
-	// Extract task ID from worktree name: task-{timestamp}-{instance} -> task-{timestamp}
+	// Extract task ID from worktree name: {task-name}-{instance} -> {task-name}
 	taskID := worktreeName
 	if lastDash := strings.LastIndex(worktreeName, "-"); lastDash > 0 {
 		taskID = worktreeName[:lastDash]

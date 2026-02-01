@@ -41,7 +41,7 @@ WINNER: <worktree-name>
 
 For example:
 ```
-WINNER: task-123456789-1
+WINNER: my-task-1
 ```
 
 The worktree name must exactly match one of the provided worktree names.
