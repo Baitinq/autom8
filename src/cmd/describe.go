@@ -11,8 +11,9 @@ import (
 )
 
 var DescribeCmd = &cobra.Command{
-	Use:   "describe <task-id>",
-	Short: "Show detailed information about a task",
+	Use:     "describe <task-id>",
+	Aliases: []string{"info"},
+	Short:   "Show detailed information about a task",
 	Long: `Display detailed information about a specific task.
 
 Shows comprehensive task details including:

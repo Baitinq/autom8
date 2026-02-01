@@ -12,8 +12,9 @@ import (
 )
 
 var AcceptCmd = &cobra.Command{
-	Use:   "accept <worktree-name>",
-	Short: "Merge a worktree branch into current branch and clean up",
+	Use:     "accept <worktree-name>",
+	Aliases: []string{"merge"},
+	Short:   "Merge a worktree branch into current branch and clean up",
 	Long: `Accept and merge a completed implementation from a worktree.
 
 This command will:

@@ -13,7 +13,7 @@ import (
 
 var DeleteCmd = &cobra.Command{
 	Use:     "delete <task-id>",
-	Aliases: []string{"rm"},
+	Aliases: []string{"rm", "remove"},
 	Short:   "Delete a task by ID",
 	Long: `Delete a task from the task list.
 

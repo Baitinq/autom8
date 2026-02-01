@@ -17,8 +17,9 @@ var (
 )
 
 var NewCmd = &cobra.Command{
-	Use:   "new",
-	Short: "Create a new task/prompt",
+	Use:     "new",
+	Aliases: []string{"add", "create"},
+	Short:   "Create a new task/prompt",
 	Long: `Create a new task with a prompt and optional verification criteria.
 
 Without flags, starts an interactive mode to guide you through task creation.

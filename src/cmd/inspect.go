@@ -11,8 +11,9 @@ import (
 )
 
 var InspectCmd = &cobra.Command{
-	Use:   "inspect <worktree-name>",
-	Short: "Enter a worktree directory for inspection",
+	Use:     "inspect <worktree-name>",
+	Aliases: []string{"shell"},
+	Short:   "Enter a worktree directory for inspection",
 	Long: `Open a new shell in the specified worktree directory.
 
 This allows you to inspect the implementation, run tests, or make manual changes.

@@ -1,18 +1,49 @@
 [
   {
-    "id": "task-1769901699016953000",
-    "prompt": "Implement a review loop that runs after implementation completes.\n\n## Background\nCurrently, when an implementer agent outputs 'TASK COMPLETE', the ralph loop ends and the worktree is marked as ready. We want to add a review step between implementation completion and final readiness.\n\n## Codex CLI Usage\nThe review should use the `codex review` subcommand which is designed for code reviews:\n```bash\ncodex review --base \u003cbase-branch\u003e \"\u003creview prompt\u003e\"\n```\nThis command automatically handles the diff comparison against the base branch.\n\nFor implementation fixes (when review fails), use:\n```bash\ncodex exec --dangerously-bypass-approvals-and-sandbox \"\u003cprompt\u003e\"\n```\n\n## Requirements\n\n### Review Loop Mechanism\nAfter the implementation loop detects 'TASK COMPLETE':\n1. Start a new loop called the 'review loop'\n2. Invoke `codex review --base \u003cbase-branch\u003e \"\u003cprompt\u003e\"` where base-branch is the branch the worktree was created from\n3. The review prompt should include:\n   - The reviewer.md agent template (from src/agents/reviewer.md)\n   - The original task description\n   - The verification criteria\n   - Instructions to output 'REVIEW APPROVED' when satisfied\n\n### Loop Termination\nThe review loop should continue iterating until the codex reviewer outputs 'REVIEW APPROVED' (case-sensitive).\n- If codex outputs 'REVIEW APPROVED', the review loop ends successfully\n- If codex doesn't output 'REVIEW APPROVED', it means there are issues to fix\n- The reviewer's feedback should be appended to the implementation prompt\n- Run another implementation iteration with `codex exec --dangerously-bypass-approvals-and-sandbox` passing the feedback\n- Then run the review loop again\n- This continues until the reviewer approves\n\n### Max Review Cycles\nAdd a maximum number of review cycles (default: 5) to prevent infinite loops. If max cycles reached without approval, mark as '[stopped]' with appropriate message.\n\n### Integration Point\nModify the `implementTaskWithSuffix()` function in src/main.go:\n- After detecting 'TASK COMPLETE', don't return immediately\n- Instead, start the review loop\n- Only return the '[completed]' status after 'REVIEW APPROVED' is detected\n\n### Logging\n- Log review iterations to the same logs directory\n- Use naming like 'review-iteration-N.log' to distinguish from implementation logs\n- Log implementation fix iterations as 'fix-iteration-N.log'\n\n### Agent Template for Reviewer\nUpdate src/agents/reviewer.md to include:\n- Instructions for outputting 'REVIEW APPROVED' when the implementation is satisfactory\n- Instructions to provide specific, actionable feedback when issues are found\n- Clear format for feedback that can be parsed and passed to the implementer",
+    "id": "task-1769939061876536000",
+    "prompt": "Refactor the single-file src/main.go into a multi-file structure:\n\n**Target structure:**\n```\nsrc/\n├── main.go              # Root command definition, init() wiring, entry point\n├── core/\n│   ├── task.go          # Task struct, loadTasks, saveTasks\n│   └── worktree.go      # WorktreeInfo, getWorktreeInfo, PID tracking (loadPids, savePids, isProcessRunning)\n├── cmd/\n│   ├── new.go           # NewCmd + runFeature\n│   ├── status.go        # StatusCmd + runStatus\n│   ├── implement.go     # ImplementCmd + runImplement + implementTaskWithSuffix + review loop helpers\n│   ├── converge.go      # ConvergeCmd + runConverge + buildConvergePrompt + parseConvergeResponse + doAccept\n│   ├── accept.go        # AcceptCmd + runAccept\n│   ├── delete.go        # DeleteCmd + runDelete\n│   ├── prune.go         # PruneCmd + runPrune\n│   ├── inspect.go       # InspectCmd + runInspect\n│   ├── describe.go      # DescribeCmd + runDescribe\n│   ├── edit.go          # EditCmd + runEdit\n│   ├── show.go          # ShowCmd + runShow + pipeToLess\n│   └── chat.go          # ChatCmd + runChat + buildChatSystemPrompt\n└── agents/              # (unchanged, but embed directive moves to appropriate location)\n```\n\n**Guidelines:**\n- main.go: defines rootCmd, styles, constants, init() registers all subcommands, main() calls Execute()\n- core/: package core, exports Task, WorktreeInfo, and their associated functions\n- cmd/: package cmd, each file exports one XxxCmd variable that main.go imports and registers\n- Keep helper functions with their associated command (don't over-abstract)\n- The truncate() helper can stay in main.go or go wherever it's most used\n- Embedded agents/ templates: move embed directive to wherever it's needed (likely core/ or cmd/implement.go)",
     "verification_criteria": [
-      "Review loop is triggered after 'TASK COMPLETE' is detected in implementation output",
-      "codex review --base \u003cbranch\u003e is used for the review step (not claude)",
-      "reviewer.md template is included in the review prompt along with task description and verification criteria",
-      "Review loop continues until 'REVIEW APPROVED' is detected in codex output",
-      "If review fails, feedback is appended to prompt and codex exec runs implementation fixes",
-      "Maximum review cycles limit (default 5) prevents infinite loops",
-      "Review iterations are logged separately (review-iteration-N.log, fix-iteration-N.log)",
-      "reviewer.md is updated to instruct the agent to output 'REVIEW APPROVED' when satisfied"
+      "Code compiles successfully (go build ./src)",
+      "All existing commands work: new, status, implement, converge, accept, delete, prune, inspect, describe, edit, show, chat",
+      "src/main.go contains root command, styles, constants, init() wiring, and main()",
+      "src/core/task.go contains Task struct and load/save functions",
+      "src/core/worktree.go contains WorktreeInfo and related functions",
+      "src/cmd/ contains exactly 12 files, one per command",
+      "No functionality changes - pure refactor",
+      "CLAUDE.md updated to reflect new repository structure"
     ],
-    "created_at": "2026-02-01T00:21:39.01696+01:00",
-    "status": "pending"
+    "created_at": "2026-02-01T10:44:21.876544+01:00",
+    "status": "completed"
+  },
+  {
+    "id": "task-1769939320983966000",
+    "prompt": "Add common command aliases to improve CLI usability. Update the following Cobra command definitions in src/main.go to include additional aliases:\n\n- newCmd: add Aliases: []string{\"add\", \"create\"}\n- acceptCmd: add Aliases: []string{\"merge\"}\n- deleteCmd: update existing Aliases to []string{\"rm\", \"remove\"}\n- inspectCmd: add Aliases: []string{\"shell\"}\n- describeCmd: add Aliases: []string{\"info\"}\n- pruneCmd: add Aliases: []string{\"clean\"}\n- showCmd: add Aliases: []string{\"diff\"}\n\nFollow the same pattern as statusCmd which already has Aliases: []string{\"ls\", \"list\"}.",
+    "verification_criteria": [
+      "newCmd has Aliases containing 'add' and 'create'",
+      "acceptCmd has Aliases containing 'merge'",
+      "deleteCmd has Aliases containing 'rm' and 'remove'",
+      "inspectCmd has Aliases containing 'shell'",
+      "describeCmd has Aliases containing 'info'",
+      "pruneCmd has Aliases containing 'clean'",
+      "showCmd has Aliases containing 'diff'",
+      "Code compiles without errors (go build ./src)"
+    ],
+    "created_at": "2026-02-01T10:48:40.983968+01:00",
+    "status": "completed"
+  },
+  {
+    "id": "task-1769939559401106000",
+    "prompt": "Make the implement command non-blocking using a detached subprocess approach. When implement runs, it should spawn a hidden worker subprocess (e.g., 'autom8 _worker \u003cworktree\u003e') for each worktree that handles the implementation loop (Claude) and review loop (Codex). The main process exits immediately after spawning workers. Workers write their PID to a file in the worktree for tracking. The status command should show running workers by checking PIDs and allow tailing logs.",
+    "verification_criteria": [
+      "Implement command returns immediately after spawning worker subprocesses",
+      "Add hidden '_worker' subcommand that runs the implementation and review loops for a single worktree",
+      "Worker writes PID file to worktree directory on startup",
+      "Worker removes PID file on completion (success or failure)",
+      "Status command shows which worktrees have active workers (via PID check)",
+      "Workers survive terminal close (proper detachment with setsid or equivalent)",
+      "Existing loop logic (Claude impl + Codex review) moves into the worker subcommand"
+    ],
+    "created_at": "2026-02-01T10:52:39.401108+01:00",
+    "status": "in-progress"
   }
 ]

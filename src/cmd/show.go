@@ -11,8 +11,9 @@ import (
 )
 
 var ShowCmd = &cobra.Command{
-	Use:   "show <worktree-name>",
-	Short: "Show the diff between main and a worktree (PR-style)",
+	Use:     "show <worktree-name>",
+	Aliases: []string{"diff"},
+	Short:   "Show the diff between main and a worktree (PR-style)",
 	Long: `Display the changes in a worktree compared to the main branch.
 
 This shows the diff in a PR-style format, making it easy to review what
