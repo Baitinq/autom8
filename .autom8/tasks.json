@@ -1,49 +1,26 @@
 [
   {
-    "id": "task-1769939061876536000",
-    "prompt": "Refactor the single-file src/main.go into a multi-file structure:\n\n**Target structure:**\n```\nsrc/\n├── main.go              # Root command definition, init() wiring, entry point\n├── core/\n│   ├── task.go          # Task struct, loadTasks, saveTasks\n│   └── worktree.go      # WorktreeInfo, getWorktreeInfo, PID tracking (loadPids, savePids, isProcessRunning)\n├── cmd/\n│   ├── new.go           # NewCmd + runFeature\n│   ├── status.go        # StatusCmd + runStatus\n│   ├── implement.go     # ImplementCmd + runImplement + implementTaskWithSuffix + review loop helpers\n│   ├── converge.go      # ConvergeCmd + runConverge + buildConvergePrompt + parseConvergeResponse + doAccept\n│   ├── accept.go        # AcceptCmd + runAccept\n│   ├── delete.go        # DeleteCmd + runDelete\n│   ├── prune.go         # PruneCmd + runPrune\n│   ├── inspect.go       # InspectCmd + runInspect\n│   ├── describe.go      # DescribeCmd + runDescribe\n│   ├── edit.go          # EditCmd + runEdit\n│   ├── show.go          # ShowCmd + runShow + pipeToLess\n│   └── chat.go          # ChatCmd + runChat + buildChatSystemPrompt\n└── agents/              # (unchanged, but embed directive moves to appropriate location)\n```\n\n**Guidelines:**\n- main.go: defines rootCmd, styles, constants, init() registers all subcommands, main() calls Execute()\n- core/: package core, exports Task, WorktreeInfo, and their associated functions\n- cmd/: package cmd, each file exports one XxxCmd variable that main.go imports and registers\n- Keep helper functions with their associated command (don't over-abstract)\n- The truncate() helper can stay in main.go or go wherever it's most used\n- Embedded agents/ templates: move embed directive to wherever it's needed (likely core/ or cmd/implement.go)",
+    "id": "label-winner-in-status",
+    "prompt": "Modify the status command to visually distinguish the winning worktree after converge runs. When displaying worktrees in 'autom8 status', prefix the winning worktree name with a ★ star character. The Task struct already has a Winner field that stores the winning worktree name - use this to determine which worktree to label.",
     "verification_criteria": [
-      "Code compiles successfully (go build ./src)",
-      "All existing commands work: new, status, implement, converge, accept, delete, prune, inspect, describe, edit, show, chat",
-      "src/main.go contains root command, styles, constants, init() wiring, and main()",
-      "src/core/task.go contains Task struct and load/save functions",
-      "src/core/worktree.go contains WorktreeInfo and related functions",
-      "src/cmd/ contains exactly 12 files, one per command",
-      "No functionality changes - pure refactor",
-      "CLAUDE.md updated to reflect new repository structure"
+      "Winning worktree is prefixed with ★ in status output",
+      "Non-winning worktrees display without the star",
+      "Works correctly when no winner has been selected yet (no star shown)",
+      "Star appears before the worktree name, after the status badge"
     ],
-    "created_at": "2026-02-01T10:44:21.876544+01:00",
-    "status": "completed"
+    "created_at": "2026-02-01T18:04:35.632914+01:00",
+    "status": "pending"
   },
   {
-    "id": "task-1769939320983966000",
-    "prompt": "Add common command aliases to improve CLI usability. Update the following Cobra command definitions in src/main.go to include additional aliases:\n\n- newCmd: add Aliases: []string{\"add\", \"create\"}\n- acceptCmd: add Aliases: []string{\"merge\"}\n- deleteCmd: update existing Aliases to []string{\"rm\", \"remove\"}\n- inspectCmd: add Aliases: []string{\"shell\"}\n- describeCmd: add Aliases: []string{\"info\"}\n- pruneCmd: add Aliases: []string{\"clean\"}\n- showCmd: add Aliases: []string{\"diff\"}\n\nFollow the same pattern as statusCmd which already has Aliases: []string{\"ls\", \"list\"}.",
+    "id": "converge-show-reasoning",
+    "prompt": "Modify the converge subcommand to display a brief reasoning summary explaining why the winning implementation was chosen.\n\nChanges needed:\n1. In buildConvergePrompt(): Add instruction for the AI to output 'REASONING: \u003c1-2 sentence summary\u003e' in addition to 'WINNER: \u003cname\u003e'\n2. In parseConvergeResponse(): Extract both the winner name and the reasoning string. Change the return type or add a second return value for the reasoning.\n3. In runConverge(): Display the extracted reasoning after showing the winner, using appropriate styling.\n\nThe reasoning should appear in the output like:\n    [winner] my-task-1\n    [reason] This implementation correctly handles all edge cases and has cleaner code structure.",
     "verification_criteria": [
-      "newCmd has Aliases containing 'add' and 'create'",
-      "acceptCmd has Aliases containing 'merge'",
-      "deleteCmd has Aliases containing 'rm' and 'remove'",
-      "inspectCmd has Aliases containing 'shell'",
-      "describeCmd has Aliases containing 'info'",
-      "pruneCmd has Aliases containing 'clean'",
-      "showCmd has Aliases containing 'diff'",
-      "Code compiles without errors (go build ./src)"
+      "The converge output displays a 1-2 sentence reasoning for why the winner was chosen",
+      "The prompt in buildConvergePrompt instructs the AI to provide REASONING: \u003csummary\u003e",
+      "parseConvergeResponse extracts and returns both winner and reasoning",
+      "The reasoning is displayed with appropriate styling after the winner line"
     ],
-    "created_at": "2026-02-01T10:48:40.983968+01:00",
-    "status": "completed"
-  },
-  {
-    "id": "task-1769939559401106000",
-    "prompt": "Make the implement command non-blocking using a detached subprocess approach. When implement runs, it should spawn a hidden worker subprocess (e.g., 'autom8 _worker \u003cworktree\u003e') for each worktree that handles the implementation loop (Claude) and review loop (Codex). The main process exits immediately after spawning workers. Workers write their PID to a file in the worktree for tracking. The status command should show running workers by checking PIDs and allow tailing logs.",
-    "verification_criteria": [
-      "Implement command returns immediately after spawning worker subprocesses",
-      "Add hidden '_worker' subcommand that runs the implementation and review loops for a single worktree",
-      "Worker writes PID file to worktree directory on startup",
-      "Worker removes PID file on completion (success or failure)",
-      "Status command shows which worktrees have active workers (via PID check)",
-      "Workers survive terminal close (proper detachment with setsid or equivalent)",
-      "Existing loop logic (Claude impl + Codex review) moves into the worker subcommand"
-    ],
-    "created_at": "2026-02-01T10:52:39.401108+01:00",
-    "status": "in-progress"
+    "created_at": "2026-02-01T18:05:55.638932+01:00",
+    "status": "pending"
   }
 ]
