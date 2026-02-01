@@ -52,7 +52,7 @@ func runShow(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Get the diff between main and the worktree branch
-	diffCmd := exec.Command("git", "-C", worktreePath, "diff", "main...HEAD", "--stat")
+	diffCmd := exec.Command("git", "-C", worktreePath, "diff", "--color=always", "main...HEAD", "--stat")
 	statOutput, _ := diffCmd.Output()
 
 	if len(statOutput) > 0 {
@@ -61,7 +61,7 @@ func runShow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the full diff
-	fullDiffCmd := exec.Command("git", "-C", worktreePath, "diff", "main...HEAD")
+	fullDiffCmd := exec.Command("git", "-C", worktreePath, "diff", "--color=always", "main...HEAD")
 	fullDiffOutput, err := fullDiffCmd.Output()
 	if err != nil {
 		return fmt.Errorf("error getting diff: %w", err)
