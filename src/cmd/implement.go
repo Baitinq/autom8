@@ -135,10 +135,18 @@ func findParentSuffixes(worktreesDir, taskID string) []string {
 		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
-		suffix := strings.TrimPrefix(name, taskID)
-		if suffix == "" {
+		remainder := strings.TrimPrefix(name, prefix)
+		if remainder == "" {
 			continue
 		}
+		parts := strings.SplitN(remainder, "-", 2)
+		if len(parts) == 0 || parts[0] == "" {
+			continue
+		}
+		if _, err := strconv.Atoi(parts[0]); err != nil {
+			continue
+		}
+		suffix := "-" + remainder
 		if _, ok := seen[suffix]; ok {
 			continue
 		}
