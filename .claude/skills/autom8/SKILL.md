@@ -41,13 +41,19 @@ The goal is a well-defined task that an implementation agent can execute without
 Once you've discussed the feature enough and the user confirms they're ready to create the task, run `autom8 new` with the appropriate flags:
 
 ```bash
-autom8 new -p "<prompt>" -c "<criterion1>" -c "<criterion2>" ...
+autom8 new -n "<task-name>" -p "<prompt>" -c "<criterion1>" -c "<criterion2>" ...
 ```
 
-If the task depends on another task, add `-d <task-id>`.
+### Flags
+
+- `-n/--name` - A unique, descriptive task name (e.g., `add-logout-button`, `fix-auth-bug`)
+- `-p/--prompt` - Clear instructions for the implementation agent
+- `-c/--criteria` - Verification criteria (can be specified multiple times)
+- `-d/--depends-on` - Task name this depends on (if applicable)
 
 ### Guidelines for the command
 
+- **Task names** should be kebab-case, descriptive, and unique (e.g., `add-dry-run-flag`, `refactor-auth-module`)
 - The `-p` prompt should be clear, specific instructions for an AI implementation agent
 - Each `-c` criterion should be independently verifiable
 - Keep criteria concrete and testable (not vague like "code is clean")
@@ -57,12 +63,31 @@ If the task depends on another task, add `-d <task-id>`.
 
 ```bash
 autom8 new \
+  -n "add-dry-run-flag" \
   -p "Add a --dry-run flag to the implement command. When set, it should print what would happen (worktrees that would be created, branches, commands) without actually creating anything or spawning Claude processes." \
   -c "implement command accepts --dry-run / -d flag" \
   -c "With --dry-run, no worktrees are created" \
   -c "With --dry-run, no Claude processes are spawned" \
   -c "Output shows what would have been created (worktree paths, branch names)" \
   -c "Flag is documented in help text"
+```
+
+## Editing Tasks
+
+If a task needs to be modified after creation, use `autom8 edit`:
+
+```bash
+# Rename a task
+autom8 edit my-task -n new-name
+
+# Update the prompt
+autom8 edit my-task -p "Updated prompt text"
+
+# Replace all criteria
+autom8 edit my-task -c "new criterion 1" -c "new criterion 2"
+
+# Change dependency
+autom8 edit my-task -d other-task
 ```
 
 ## Start

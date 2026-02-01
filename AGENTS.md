@@ -53,10 +53,10 @@ autom8/
 ### Task
 
 The fundamental data structure (defined in `src/core/task.go`) containing:
-- **ID** - Unique identifier (`task-<unix-nano>`)
+- **ID** - Unique identifier (user-defined name like `add-login-page`, or auto-generated `task-<unix-nano>`)
 - **Prompt** - Implementation instruction
 - **VerificationCriteria** - List of success criteria
-- **DependsOn** - Optional parent task ID
+- **DependsOn** - Optional parent task name
 - **CreatedAt** - Timestamp
 - **Status** - `pending`, `in-progress`, or `completed`
 - **Winner** - Winning worktree name (set by `converge` command)
@@ -94,9 +94,16 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 ### Flag Reference
 
 **`autom8 new`**:
+- `-n <name>` - Task name (unique identifier, e.g., `add-login-page`)
 - `-p <prompt>` - Task prompt (non-interactive)
 - `-c <criterion>` - Verification criterion (repeatable)
-- `-d <task-id>` - Dependency task ID
+- `-d <task-name>` - Dependency task name
+
+**`autom8 edit <task-name>`**:
+- `-n <name>` - Rename the task
+- `-p <prompt>` - Replace the task prompt
+- `-c <criterion>` - Replace verification criteria (repeatable)
+- `-d <task-name>` - Change dependency (empty string to remove)
 
 **`autom8 implement`**:
 - `-n <count>` - Number of parallel instances per task (default: 1)
@@ -210,8 +217,17 @@ Look for `exec.Command("claude", ...)` in `src/cmd/implement.go` or `src/cmd/cha
 
 - `.autom8/tasks.json` - User's task definitions (should be committed)
 - `src/cmd/agents/*.md` - Prompt templates for AI agents (embedded into binary)
+- `.claude/skills/autom8/SKILL.md` - Claude Code skill for interactive task design
 
 ## Files That Are Ephemeral
 
 - `.autom8/worktrees/` - Recreated on each implement run
 - `.direnv/` - Local direnv cache
+
+## Keeping Documentation in Sync
+
+When modifying CLI commands, flags, or user-facing behavior, remember to update:
+
+1. **`.claude/skills/autom8/SKILL.md`** - The Claude Code skill that helps users design tasks interactively. Update this when command syntax, flags, or workflows change.
+2. **This file (CLAUDE.md)** - Update the Commands table and Flag Reference sections.
+3. **README.md** - User-facing documentation.
