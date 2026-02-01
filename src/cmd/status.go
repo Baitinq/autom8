@@ -123,12 +123,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// Print worktrees for this task
 		worktrees := worktreesByTask[task.ID]
 		children := childrenMap[task.ID]
+		hasChildren := len(children) > 0
 
 		if len(worktrees) > 0 {
 			fmt.Printf("%s%s\n", childPrefix, SubtitleStyle.Render("Worktrees:"))
 			for i, wt := range worktrees {
-				// Worktrees section is self-contained - last worktree is always └──
-				wtIsLast := i == len(worktrees)-1
+				// Keep branch continuity if child tasks follow the worktrees section.
+				wtIsLast := i == len(worktrees)-1 && !hasChildren
 				wtBranch := "├── "
 				if wtIsLast {
 					wtBranch = "└── "
