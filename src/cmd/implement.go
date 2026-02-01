@@ -6,8 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"sync"
+	"syscall"
 
 	"github.com/baitinq/autom8/src/core"
 	"github.com/spf13/cobra"
@@ -15,6 +16,10 @@ import (
 
 //go:embed agents/*.md
 var agentTemplates embed.FS
+
+const (
+	workerLogFile = "worker.log"
+)
 
 var (
 	numInstances  int
@@ -32,7 +37,10 @@ Otherwise, all pending tasks will be implemented.
 Each agent runs in an isolated git worktree, allowing multiple parallel
 implementations without conflicts. For dependent tasks, the branching
 is exponential - each instance of a dependent task branches from each
-instance of its parent task.`,
+instance of its parent task.
+
+The command spawns worker subprocesses for each worktree and returns
+immediately. Use 'autom8 status' to monitor progress.`,
 	Example: `  # Implement all pending tasks
   autom8 implement
 
@@ -171,31 +179,26 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error updating task status: %w", err)
 	}
 
-	// Load the implementer agent template
-	agentTemplate, err := loadAgentTemplate("implementer")
+	// Get the path to the current executable for spawning workers
+	exePath, err := os.Executable()
 	if err != nil {
-		// Template is optional, continue without it
-		agentTemplate = ""
+		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	var wg sync.WaitGroup
-	results := make(chan string, totalIndependent+totalDependent)
+	// Track spawned workers
+	var spawnedWorkers []string
 
 	// Track created branches for independent tasks
 	independentBranches := make(map[string][]string)
 
-	// Start independent tasks in parallel
+	// Start independent tasks
 	for _, task := range independentTasks {
 		independentBranches[task.ID] = make([]string, numInstances)
 		for i := 0; i < numInstances; i++ {
 			suffix := fmt.Sprintf("-%d", i+1)
 			independentBranches[task.ID][i] = suffix
-			wg.Add(1)
-			go func(t core.Task, s string) {
-				defer wg.Done()
-				result := implementTaskWithSuffix(t, gitRoot, worktreesDir, "", s, agentTemplate, maxIterations)
-				results <- result
-			}(task, suffix)
+			result := spawnWorkerForTask(task, gitRoot, worktreesDir, "", suffix, exePath, maxIterations)
+			spawnedWorkers = append(spawnedWorkers, result)
 		}
 	}
 
@@ -212,34 +215,26 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		for _, depSuffix := range depSuffixes {
 			for i := 0; i < numInstances; i++ {
 				suffix := fmt.Sprintf("%s-%d", depSuffix, i+1)
-				wg.Add(1)
-				go func(t core.Task, ds, s string) {
-					defer wg.Done()
-					baseBranch := fmt.Sprintf("%s%s", t.DependsOn, ds)
-					result := implementTaskWithSuffix(t, gitRoot, worktreesDir, baseBranch, s, agentTemplate, maxIterations)
-					results <- result
-				}(task, depSuffix, suffix)
+				baseBranch := fmt.Sprintf("%s%s", task.DependsOn, depSuffix)
+				result := spawnWorkerForTask(task, gitRoot, worktreesDir, baseBranch, suffix, exePath, maxIterations)
+				spawnedWorkers = append(spawnedWorkers, result)
 			}
 		}
 	}
 
-	// Wait and collect results
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	for result := range results {
+	// Print results
+	for _, result := range spawnedWorkers {
 		fmt.Println(result)
 	}
 
 	fmt.Println()
-	fmt.Println(SuccessStyle.Render("All implementations complete!"))
-	fmt.Println(SubtitleStyle.Render("Use 'autom8 status' to see results."))
+	fmt.Println(SuccessStyle.Render("Workers spawned!"))
+	fmt.Println(SubtitleStyle.Render("Use 'autom8 status' to monitor progress."))
 	return nil
 }
 
-func implementTaskWithSuffix(task core.Task, gitRoot, worktreesDir, baseBranchID, suffix, agentTemplate string, maxIter int) string {
+// spawnWorkerForTask creates a worktree and spawns a detached worker subprocess
+func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suffix, exePath string, maxIter int) string {
 	instanceID := task.ID + suffix
 	worktreePath := filepath.Join(worktreesDir, instanceID)
 
@@ -247,7 +242,16 @@ func implementTaskWithSuffix(task core.Task, gitRoot, worktreesDir, baseBranchID
 
 	// Check if worktree already exists
 	if _, err := os.Stat(worktreePath); err == nil {
-		return fmt.Sprintf("  %s %s (already exists)", SubtitleStyle.Render("[skip]"), instanceID)
+		// Check if worker is already running
+		pidFile := filepath.Join(worktreePath, core.WorkerPidFile)
+		if pidData, err := os.ReadFile(pidFile); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
+				if core.IsProcessRunning(pid) {
+					return fmt.Sprintf("  %s %s (worker already running, PID %d)", SubtitleStyle.Render("[skip]"), instanceID, pid)
+				}
+			}
+		}
+		return fmt.Sprintf("  %s %s (already exists, no active worker)", SubtitleStyle.Render("[skip]"), instanceID)
 	}
 
 	// Determine base branch for worktree creation and review
@@ -272,184 +276,42 @@ func implementTaskWithSuffix(task core.Task, gitRoot, worktreesDir, baseBranchID
 		return fmt.Sprintf("  %s %s: failed to create logs dir: %v", ErrorStyle.Render("[error]"), instanceID, err)
 	}
 
-	// Build the prompt with agent template, task, and verification criteria
-	var promptBuilder strings.Builder
-	if agentTemplate != "" {
-		promptBuilder.WriteString(agentTemplate)
+	// Spawn a detached worker subprocess
+	workerArgs := []string{
+		"_worker",
+		"--worktree-path", worktreePath,
+		"--base-branch", baseBranch,
+		"--task-id", task.ID,
 	}
-	promptBuilder.WriteString(task.Prompt)
-	if len(task.VerificationCriteria) > 0 {
-		promptBuilder.WriteString("\n\n## Verification Criteria\n\n")
-		for _, c := range task.VerificationCriteria {
-			promptBuilder.WriteString(fmt.Sprintf("- %s\n", c))
-		}
-	}
-	prompt := promptBuilder.String()
-
-	// Run claude in a loop until TASK COMPLETE or max iterations
-	iteration := 0
-	for {
-		iteration++
-
-		// Check max iterations limit
-		if maxIter > 0 && iteration > maxIter {
-			return fmt.Sprintf("  %s %s (max iterations %d reached)", StatusPendingStyle.Render("[stopped]"), instanceID, maxIter)
-		}
-
-		// Create log file for this iteration
-		logFile := filepath.Join(logsDir, fmt.Sprintf("iteration-%d.log", iteration))
-
-		// Run claude synchronously and capture output
-		claudeCmd := exec.Command("claude", "-p", prompt, "--dangerously-skip-permissions")
-		claudeCmd.Dir = worktreePath
-
-		output, err := claudeCmd.Output()
-		if err != nil {
-			// Log the error
-			os.WriteFile(logFile, []byte(fmt.Sprintf("ERROR: %v\n%s", err, string(output))), 0644)
-			return fmt.Sprintf("  %s %s (iteration %d failed: %v)", ErrorStyle.Render("[error]"), instanceID, iteration, err)
-		}
-
-		// Write output to log file
-		os.WriteFile(logFile, output, 0644)
-
-		// Check if output contains TASK COMPLETE
-		if strings.Contains(string(output), "TASK COMPLETE") {
-			// Implementation complete - now start the review loop
-			reviewResult := runReviewLoop(task, worktreePath, logsDir, baseBranch)
-			if reviewResult != "" {
-				return fmt.Sprintf("  %s %s (review failed: %s)", ErrorStyle.Render("[error]"), instanceID, reviewResult)
-			}
-
-			baseInfo := "HEAD"
-			if baseBranchID != "" {
-				baseInfo = fmt.Sprintf("autom8/%s", baseBranchID)
-			}
-			return fmt.Sprintf("  %s %s (branch: %s, base: %s, impl iterations: %d)",
-				SuccessStyle.Render("[completed]"), instanceID, HighlightStyle.Render(branchName), IDStyle.Render(baseInfo), iteration)
-		}
-
-		// Continue to next iteration
-	}
-}
-
-// runReviewLoop runs the review loop after implementation completes.
-// It uses codex review to check the implementation and codex exec to fix issues.
-// Returns empty string on success, or an error message on failure.
-func runReviewLoop(task core.Task, worktreePath, logsDir, baseBranch string) string {
-	reviewIteration := 0
-	fixIteration := 0
-
-	for {
-		reviewIteration++
-
-		// Create log file for this review iteration
-		reviewLogFile := filepath.Join(logsDir, fmt.Sprintf("review-iteration-%d.log", reviewIteration))
-
-		// Run codex review with base branch
-		// Note: codex review --base doesn't accept a prompt argument
-		codexCmd := exec.Command("codex", "review", "--base", baseBranch)
-		codexCmd.Dir = worktreePath
-
-		output, err := codexCmd.CombinedOutput()
-		if err != nil {
-			// Log the error with full output
-			os.WriteFile(reviewLogFile, []byte(fmt.Sprintf("ERROR: %v\n\nOutput:\n%s", err, string(output))), 0644)
-			return fmt.Sprintf("review iteration %d failed: %v", reviewIteration, err)
-		}
-
-		// Write output to log file
-		os.WriteFile(reviewLogFile, output, 0644)
-
-		// Check if review is approved
-		if strings.Contains(string(output), "REVIEW APPROVED") {
-			return "" // Success - review approved
-		}
-
-		// Review found issues - run fix iteration
-		fixIteration++
-
-		// Build fix prompt with reviewer feedback
-		fixPrompt := buildFixPrompt(task, string(output))
-
-		// Create log file for this fix iteration
-		fixLogFile := filepath.Join(logsDir, fmt.Sprintf("fix-iteration-%d.log", fixIteration))
-
-		// Run codex exec to fix issues
-		fixCmd := exec.Command("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", fixPrompt)
-		fixCmd.Dir = worktreePath
-
-		fixOutput, err := fixCmd.CombinedOutput()
-		if err != nil {
-			// Log the error with full output
-			os.WriteFile(fixLogFile, []byte(fmt.Sprintf("ERROR: %v\n\nOutput:\n%s", err, string(fixOutput))), 0644)
-			return fmt.Sprintf("fix iteration %d failed: %v", fixIteration, err)
-		}
-
-		// Write output to log file
-		os.WriteFile(fixLogFile, fixOutput, 0644)
-
-		// Continue to next review iteration
-	}
-}
-
-// buildReviewPrompt constructs the prompt for the codex review command.
-func buildReviewPrompt(task core.Task, reviewerTemplate string) string {
-	var sb strings.Builder
-
-	if reviewerTemplate != "" {
-		sb.WriteString(reviewerTemplate)
+	if maxIter > 0 {
+		workerArgs = append(workerArgs, "--max-iterations", strconv.Itoa(maxIter))
 	}
 
-	sb.WriteString("## Original Task\n\n")
-	sb.WriteString(task.Prompt)
-	sb.WriteString("\n\n")
+	workerCmd := exec.Command(exePath, workerArgs...)
 
-	if len(task.VerificationCriteria) > 0 {
-		sb.WriteString("## Verification Criteria\n\n")
-		for _, c := range task.VerificationCriteria {
-			sb.WriteString(fmt.Sprintf("- %s\n", c))
-		}
-		sb.WriteString("\n")
+	// Redirect stdout/stderr to log file
+	logFile := filepath.Join(logsDir, workerLogFile)
+	logFd, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Sprintf("  %s %s: failed to create log file: %v", ErrorStyle.Render("[error]"), instanceID, err)
+	}
+	workerCmd.Stdout = logFd
+	workerCmd.Stderr = logFd
+
+	// Set up process attributes for detachment (setsid equivalent)
+	workerCmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true,
 	}
 
-	sb.WriteString("Review the implementation changes and determine if they satisfy all requirements and verification criteria.\n")
-	sb.WriteString("If satisfied, output: REVIEW APPROVED\n")
-	sb.WriteString("If issues found, provide specific feedback for the implementer.\n")
-
-	return sb.String()
-}
-
-// buildFixPrompt constructs the prompt for fixing issues based on reviewer feedback.
-func buildFixPrompt(task core.Task, reviewerFeedback string) string {
-	var sb strings.Builder
-
-	// Load implementer template for context
-	implementerTemplate, _ := loadAgentTemplate("implementer")
-	if implementerTemplate != "" {
-		sb.WriteString(implementerTemplate)
+	// Start the worker
+	if err := workerCmd.Start(); err != nil {
+		logFd.Close()
+		return fmt.Sprintf("  %s %s: failed to start worker: %v", ErrorStyle.Render("[error]"), instanceID, err)
 	}
 
-	sb.WriteString("## Original Task\n\n")
-	sb.WriteString(task.Prompt)
-	sb.WriteString("\n\n")
+	// Close log file descriptor (worker has its own reference now)
+	logFd.Close()
 
-	if len(task.VerificationCriteria) > 0 {
-		sb.WriteString("## Verification Criteria\n\n")
-		for _, c := range task.VerificationCriteria {
-			sb.WriteString(fmt.Sprintf("- %s\n", c))
-		}
-		sb.WriteString("\n")
-	}
-
-	sb.WriteString("## Reviewer Feedback\n\n")
-	sb.WriteString("The code review found the following issues that need to be fixed:\n\n")
-	sb.WriteString(reviewerFeedback)
-	sb.WriteString("\n\n")
-
-	sb.WriteString("## Your Task\n\n")
-	sb.WriteString("Fix the issues identified by the reviewer. Make the necessary changes to satisfy all verification criteria.\n")
-	sb.WriteString("After making fixes, commit your changes with a descriptive message.\n")
-
-	return sb.String()
+	pid := workerCmd.Process.Pid
+	return fmt.Sprintf("  %s %s (PID %d, branch: %s)", SuccessStyle.Render("[spawned]"), instanceID, pid, HighlightStyle.Render(branchName))
 }
