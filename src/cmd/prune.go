@@ -13,7 +13,7 @@ import (
 
 var PruneCmd = &cobra.Command{
 	Use:     "prune",
-	Aliases: []string{"clean"},
+	Aliases: []string{"clean", "purge"},
 	Short:   "Delete all completed tasks",
 	Long:  `Remove all tasks with status "completed" from the task list.`,
 	RunE:  runPrune,
