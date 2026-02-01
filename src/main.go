@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -270,6 +269,15 @@ This context is passed to Claude via --system-prompt, allowing you to:
 	RunE:    runChat,
 }
 
+// Hidden _worker command - runs implementation/review loops for a single worktree
+var workerCmd = &cobra.Command{
+	Use:    "_worker <worktree-name> <task-id> <base-branch>",
+	Hidden: true,
+	Short:  "Internal: run implementation loop for a worktree",
+	Args:   cobra.ExactArgs(3),
+	RunE:   runWorker,
+}
+
 
 // Flags
 var (
@@ -294,6 +302,7 @@ func init() {
 	rootCmd.AddCommand(convergeCmd)
 	rootCmd.AddCommand(showCmd)
 	rootCmd.AddCommand(chatCmd)
+	rootCmd.AddCommand(workerCmd)
 
 	// New command flags
 	newCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "Task prompt (non-interactive mode)")
@@ -612,10 +621,8 @@ func getWorktreeInfo(worktreesDir, worktreeName string, pids map[string]int) Wor
 		info.CommitsAhead = "0"
 	}
 
-	// Check if the tracked process is still running
-	if pid, ok := pids[worktreeName]; ok {
-		info.IsRunning = isProcessRunning(pid)
-	}
+	// Check if a worker process is running (via PID file in worktree directory)
+	_, info.IsRunning = getWorktreePid(worktreePath)
 
 	return info
 }
@@ -1365,6 +1372,161 @@ func buildChatSystemPrompt(task *Task, worktreeName, branchName, gitLog, gitDiff
 	return sb.String()
 }
 
+// runWorker is the hidden _worker command that runs the implementation/review loop for a single worktree.
+// It is spawned as a detached subprocess by the implement command.
+// Args: worktree-name task-id base-branch
+func runWorker(cmd *cobra.Command, args []string) error {
+	worktreeName := args[0]
+	taskID := args[1]
+	baseBranch := args[2]
+
+	// Verify we're in a git repository
+	if _, err := getGitRoot(); err != nil {
+		return err
+	}
+
+	autom8Path, err := getAutom8Dir()
+	if err != nil {
+		return fmt.Errorf("error getting autom8 dir: %w", err)
+	}
+
+	worktreePath := filepath.Join(autom8Path, "worktrees", worktreeName)
+
+	// Check if worktree exists
+	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
+		return fmt.Errorf("worktree '%s' not found", worktreeName)
+	}
+
+	// Write PID file to worktree directory
+	pidFile := filepath.Join(worktreePath, ".autom8.pid")
+	pid := os.Getpid()
+	if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", pid)), 0644); err != nil {
+		return fmt.Errorf("failed to write PID file: %w", err)
+	}
+
+	// Ensure PID file is removed on exit (success or failure)
+	defer os.Remove(pidFile)
+
+	// Load the task
+	tasks, err := loadTasks()
+	if err != nil {
+		return fmt.Errorf("error loading tasks: %w", err)
+	}
+
+	var task *Task
+	for i := range tasks {
+		if tasks[i].ID == taskID {
+			task = &tasks[i]
+			break
+		}
+	}
+
+	if task == nil {
+		return fmt.Errorf("task '%s' not found", taskID)
+	}
+
+	// Create logs directory for this worktree
+	logsDir := filepath.Join(autom8Path, "logs", worktreeName)
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create logs dir: %w", err)
+	}
+
+	// Load the implementer agent template
+	agentTemplate, err := loadAgentTemplate("implementer")
+	if err != nil {
+		agentTemplate = ""
+	}
+
+	// Build the prompt with agent template, task, and verification criteria
+	var promptBuilder strings.Builder
+	if agentTemplate != "" {
+		promptBuilder.WriteString(agentTemplate)
+	}
+	promptBuilder.WriteString(task.Prompt)
+	if len(task.VerificationCriteria) > 0 {
+		promptBuilder.WriteString("\n\n## Verification Criteria\n\n")
+		for _, c := range task.VerificationCriteria {
+			promptBuilder.WriteString(fmt.Sprintf("- %s\n", c))
+		}
+	}
+	prompt := promptBuilder.String()
+
+	// Run claude in a loop until TASK COMPLETE or max iterations
+	iteration := 0
+	for {
+		iteration++
+
+		// Check max iterations limit
+		if maxIterations > 0 && iteration > maxIterations {
+			fmt.Fprintf(os.Stderr, "Worker %s: max iterations %d reached\n", worktreeName, maxIterations)
+			return nil
+		}
+
+		// Create log file for this iteration
+		logFile := filepath.Join(logsDir, fmt.Sprintf("iteration-%d.log", iteration))
+
+		// Run claude synchronously and capture output
+		claudeCmd := exec.Command("claude", "-p", prompt, "--dangerously-skip-permissions")
+		claudeCmd.Dir = worktreePath
+
+		output, err := claudeCmd.Output()
+		if err != nil {
+			// Log the error
+			os.WriteFile(logFile, []byte(fmt.Sprintf("ERROR: %v\n%s", err, string(output))), 0644)
+			return fmt.Errorf("iteration %d failed: %w", iteration, err)
+		}
+
+		// Write output to log file
+		os.WriteFile(logFile, output, 0644)
+
+		// Check if output contains TASK COMPLETE
+		if strings.Contains(string(output), "TASK COMPLETE") {
+			// Implementation complete - now start the review loop
+			reviewResult := runReviewLoop(*task, worktreePath, logsDir, baseBranch)
+			if reviewResult != "" {
+				return fmt.Errorf("review failed: %s", reviewResult)
+			}
+
+			// Update PID tracking (remove from global pids.json since we succeeded)
+			pids, _ := loadPids()
+			delete(pids, worktreeName)
+			savePids(pids)
+
+			fmt.Fprintf(os.Stderr, "Worker %s: completed successfully after %d implementation iterations\n", worktreeName, iteration)
+			return nil
+		}
+
+		// Continue to next iteration
+	}
+}
+
+// getWorktreePid reads the PID from a worktree's .autom8.pid file and checks if the process is running.
+// Returns the PID and true if process is running, 0 and false otherwise.
+func getWorktreePid(worktreePath string) (int, bool) {
+	pidFile := filepath.Join(worktreePath, ".autom8.pid")
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return 0, false
+	}
+
+	var pid int
+	if _, err := fmt.Sscanf(string(data), "%d", &pid); err != nil {
+		return 0, false
+	}
+
+	if pid <= 0 {
+		return 0, false
+	}
+
+	// Check if process is running
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return pid, false
+	}
+	err = process.Signal(syscall.Signal(0))
+	return pid, err == nil
+}
+
 func runDescribe(cmd *cobra.Command, args []string) error {
 	taskID := args[0]
 
@@ -2093,31 +2255,23 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error updating task status: %w", err)
 	}
 
-	// Load the implementer agent template
-	agentTemplate, err := loadAgentTemplate("implementer")
-	if err != nil {
-		// Template is optional, continue without it
-		agentTemplate = ""
-	}
-
-	var wg sync.WaitGroup
-	results := make(chan string, totalIndependent+totalDependent)
-
 	// Track created branches for independent tasks
 	independentBranches := make(map[string][]string)
 
-	// Start independent tasks in parallel
+	// Track spawned workers
+	var spawnedWorkers []string
+
+	// Start independent tasks
 	for _, task := range independentTasks {
 		independentBranches[task.ID] = make([]string, numInstances)
 		for i := 0; i < numInstances; i++ {
 			suffix := fmt.Sprintf("-%d", i+1)
 			independentBranches[task.ID][i] = suffix
-			wg.Add(1)
-			go func(t Task, s string) {
-				defer wg.Done()
-				result := implementTaskWithSuffix(t, gitRoot, worktreesDir, "", s, agentTemplate, maxIterations)
-				results <- result
-			}(task, suffix)
+			result, workerName := spawnWorkerForTask(task, gitRoot, worktreesDir, "", suffix)
+			fmt.Println(result)
+			if workerName != "" {
+				spawnedWorkers = append(spawnedWorkers, workerName)
+			}
 		}
 	}
 
@@ -2134,34 +2288,29 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		for _, depSuffix := range depSuffixes {
 			for i := 0; i < numInstances; i++ {
 				suffix := fmt.Sprintf("%s-%d", depSuffix, i+1)
-				wg.Add(1)
-				go func(t Task, ds, s string) {
-					defer wg.Done()
-					baseBranch := fmt.Sprintf("%s%s", t.DependsOn, ds)
-					result := implementTaskWithSuffix(t, gitRoot, worktreesDir, baseBranch, s, agentTemplate, maxIterations)
-					results <- result
-				}(task, depSuffix, suffix)
+				baseBranch := fmt.Sprintf("%s%s", task.DependsOn, depSuffix)
+				result, workerName := spawnWorkerForTask(task, gitRoot, worktreesDir, baseBranch, suffix)
+				fmt.Println(result)
+				if workerName != "" {
+					spawnedWorkers = append(spawnedWorkers, workerName)
+				}
 			}
 		}
 	}
 
-	// Wait and collect results
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	for result := range results {
-		fmt.Println(result)
-	}
-
 	fmt.Println()
-	fmt.Println(successStyle.Render("All implementations complete!"))
-	fmt.Println(subtitleStyle.Render("Use 'autom8 status' to see results."))
+	if len(spawnedWorkers) > 0 {
+		fmt.Println(successStyle.Render(fmt.Sprintf("Spawned %d worker(s) in background.", len(spawnedWorkers))))
+		fmt.Println(subtitleStyle.Render("Use 'autom8 status' to monitor progress."))
+	} else {
+		fmt.Println(subtitleStyle.Render("No new workers spawned."))
+	}
 	return nil
 }
 
-func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suffix, agentTemplate string, maxIter int) string {
+// spawnWorkerForTask creates a worktree and spawns a detached worker subprocess.
+// Returns a status message and the worker name (empty if not spawned).
+func spawnWorkerForTask(task Task, gitRoot, worktreesDir, baseBranchID, suffix string) (string, string) {
 	instanceID := task.ID + suffix
 	worktreePath := filepath.Join(worktreesDir, instanceID)
 
@@ -2169,10 +2318,14 @@ func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suf
 
 	// Check if worktree already exists
 	if _, err := os.Stat(worktreePath); err == nil {
-		return fmt.Sprintf("  %s %s (already exists)", subtitleStyle.Render("[skip]"), instanceID)
+		// Check if a worker is already running for this worktree
+		if _, running := getWorktreePid(worktreePath); running {
+			return fmt.Sprintf("  %s %s (worker already running)", subtitleStyle.Render("[skip]"), instanceID), ""
+		}
+		return fmt.Sprintf("  %s %s (already exists)", subtitleStyle.Render("[skip]"), instanceID), ""
 	}
 
-	// Determine base branch for worktree creation and review
+	// Determine base branch for worktree creation
 	var baseBranch string
 	var cmd *exec.Cmd
 	if baseBranchID != "" {
@@ -2184,75 +2337,70 @@ func implementTaskWithSuffix(task Task, gitRoot, worktreesDir, baseBranchID, suf
 	}
 
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Sprintf("  %s %s: %v\n%s", errorStyle.Render("[error]"), instanceID, err, string(output))
+		return fmt.Sprintf("  %s %s: %v\n%s", errorStyle.Render("[error]"), instanceID, err, string(output)), ""
 	}
 
 	// Create logs directory for this worktree
 	autom8Path := filepath.Dir(worktreesDir)
 	logsDir := filepath.Join(autom8Path, "logs", instanceID)
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
-		return fmt.Sprintf("  %s %s: failed to create logs dir: %v", errorStyle.Render("[error]"), instanceID, err)
+		return fmt.Sprintf("  %s %s: failed to create logs dir: %v", errorStyle.Render("[error]"), instanceID, err), ""
 	}
 
-	// Build the prompt with agent template, task, and verification criteria
-	var promptBuilder strings.Builder
-	if agentTemplate != "" {
-		promptBuilder.WriteString(agentTemplate)
+	// Get the path to our own executable
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Sprintf("  %s %s: failed to get executable path: %v", errorStyle.Render("[error]"), instanceID, err), ""
 	}
-	promptBuilder.WriteString(task.Prompt)
-	if len(task.VerificationCriteria) > 0 {
-		promptBuilder.WriteString("\n\n## Verification Criteria\n\n")
-		for _, c := range task.VerificationCriteria {
-			promptBuilder.WriteString(fmt.Sprintf("- %s\n", c))
-		}
+
+	// Spawn detached worker subprocess
+	workerLogFile := filepath.Join(logsDir, "worker.log")
+	if err := spawnDetachedWorker(executable, instanceID, task.ID, baseBranch, workerLogFile); err != nil {
+		return fmt.Sprintf("  %s %s: failed to spawn worker: %v", errorStyle.Render("[error]"), instanceID, err), ""
 	}
-	prompt := promptBuilder.String()
 
-	// Run claude in a loop until TASK COMPLETE or max iterations
-	iteration := 0
-	for {
-		iteration++
-
-		// Check max iterations limit
-		if maxIter > 0 && iteration > maxIter {
-			return fmt.Sprintf("  %s %s (max iterations %d reached)", statusPendingStyle.Render("[stopped]"), instanceID, maxIter)
-		}
-
-		// Create log file for this iteration
-		logFile := filepath.Join(logsDir, fmt.Sprintf("iteration-%d.log", iteration))
-
-		// Run claude synchronously and capture output
-		claudeCmd := exec.Command("claude", "-p", prompt, "--dangerously-skip-permissions")
-		claudeCmd.Dir = worktreePath
-
-		output, err := claudeCmd.Output()
-		if err != nil {
-			// Log the error
-			os.WriteFile(logFile, []byte(fmt.Sprintf("ERROR: %v\n%s", err, string(output))), 0644)
-			return fmt.Sprintf("  %s %s (iteration %d failed: %v)", errorStyle.Render("[error]"), instanceID, iteration, err)
-		}
-
-		// Write output to log file
-		os.WriteFile(logFile, output, 0644)
-
-		// Check if output contains TASK COMPLETE
-		if strings.Contains(string(output), "TASK COMPLETE") {
-			// Implementation complete - now start the review loop
-			reviewResult := runReviewLoop(task, worktreePath, logsDir, baseBranch)
-			if reviewResult != "" {
-				return fmt.Sprintf("  %s %s (review failed: %s)", errorStyle.Render("[error]"), instanceID, reviewResult)
-			}
-
-			baseInfo := "HEAD"
-			if baseBranchID != "" {
-				baseInfo = fmt.Sprintf("autom8/%s", baseBranchID)
-			}
-			return fmt.Sprintf("  %s %s (branch: %s, base: %s, impl iterations: %d)",
-				successStyle.Render("[completed]"), instanceID, highlightStyle.Render(branchName), idStyle.Render(baseInfo), iteration)
-		}
-
-		// Continue to next iteration
+	baseInfo := "main"
+	if baseBranchID != "" {
+		baseInfo = fmt.Sprintf("autom8/%s", baseBranchID)
 	}
+	return fmt.Sprintf("  %s %s (branch: %s, base: %s)",
+		statusInProgressStyle.Render("[spawned]"), instanceID, highlightStyle.Render(branchName), idStyle.Render(baseInfo)), instanceID
+}
+
+// spawnDetachedWorker spawns a detached worker subprocess that survives terminal close.
+func spawnDetachedWorker(executable, worktreeName, taskID, baseBranch, logFile string) error {
+	// Open log file for worker output
+	log, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+
+	// Build the worker command
+	workerCmd := exec.Command(executable, "_worker", worktreeName, taskID, baseBranch)
+
+	// Set up process attributes for proper detachment
+	workerCmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true, // Create a new session, detach from controlling terminal
+	}
+
+	// Redirect stdout/stderr to log file
+	workerCmd.Stdout = log
+	workerCmd.Stderr = log
+
+	// Detach from stdin
+	workerCmd.Stdin = nil
+
+	// Start the worker process
+	if err := workerCmd.Start(); err != nil {
+		log.Close()
+		return fmt.Errorf("failed to start worker: %w", err)
+	}
+
+	// Close our handle to the log file - the worker process has its own
+	log.Close()
+
+	// Don't wait for the process - it's detached
+	return nil
 }
 
 // runReviewLoop runs the review loop after implementation completes.
