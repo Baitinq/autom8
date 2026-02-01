@@ -211,6 +211,13 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 		// Review found issues - run fix iteration
 		fixIteration++
 
+		// Update status to reflect current fix iteration
+		fixStatus := &core.WorktreeStatus{
+			Status:       "reviewing",
+			FixIteration: fixIteration,
+		}
+		core.WriteWorktreeStatus(worktreeName, fixStatus)
+
 		// Build fix prompt with reviewer feedback
 		fixPrompt := buildFixPrompt(task, string(output))
 
