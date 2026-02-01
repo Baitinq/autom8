@@ -165,8 +165,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 		// Print children (dependent tasks) - these are separate from worktrees
 		if len(children) > 0 && len(worktrees) > 0 {
-			// Add blank line to visually separate worktrees from child tasks
-			fmt.Println()
+			// Keep the tree guide visible between sections.
+			fmt.Printf("%s\n", strings.TrimRight(childPrefix, " "))
 		}
 		for i, childID := range children {
 			printTask(childID, childPrefix, i == len(children)-1)
