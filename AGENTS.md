@@ -189,6 +189,17 @@ User reviews/merges via standard git
 4. **JSON storage** - Human-readable, version-controllable tasks
 5. **Iterative execution** - Claude processes run in loops until "TASK COMPLETE"
 
+## Dogfooding
+
+**All new features should be implemented through autom8 itself.** This project eats its own dog food:
+
+1. Define the feature as an autom8 task using `autom8 new`
+2. Run `autom8 implement` to generate implementations
+3. Use `autom8 converge` to pick the best result
+4. Merge via `autom8 accept`
+
+This ensures autom8 is continuously tested in real-world usage and any friction in the workflow is discovered and addressed.
+
 ## Common Modifications
 
 ### Adding a new command
