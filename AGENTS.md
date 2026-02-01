@@ -16,11 +16,28 @@ This document serves as the ground truth for AI agents working on this repositor
 ```
 autom8/
 ├── src/
-│   ├── main.go              # All application logic (single file)
-│   └── agents/              # Embedded agent templates (compiled into binary)
-│       ├── implementer.md   # Prompt template for implementation agents
-│       ├── reviewer.md      # Prompt template for review agents
-│       └── converger.md     # Prompt template for convergence agents
+│   ├── main.go              # Root command definition, init() wiring, entry point
+│   ├── core/
+│   │   ├── task.go          # Task struct, LoadTasks, SaveTasks, Truncate
+│   │   └── worktree.go      # WorktreeInfo, GetWorktreeInfo, PID tracking
+│   └── cmd/
+│       ├── styles.go        # Shared terminal output styles
+│       ├── new.go           # NewCmd + runFeature
+│       ├── status.go        # StatusCmd + runStatus
+│       ├── implement.go     # ImplementCmd + runImplement + review loop helpers
+│       ├── converge.go      # ConvergeCmd + runConverge + doAccept
+│       ├── accept.go        # AcceptCmd + runAccept
+│       ├── delete.go        # DeleteCmd + runDelete
+│       ├── prune.go         # PruneCmd + runPrune
+│       ├── inspect.go       # InspectCmd + runInspect
+│       ├── describe.go      # DescribeCmd + runDescribe
+│       ├── edit.go          # EditCmd + runEdit
+│       ├── show.go          # ShowCmd + runShow + pipeToLess
+│       ├── chat.go          # ChatCmd + runChat + buildChatSystemPrompt
+│       └── agents/          # Embedded agent templates (compiled into binary)
+│           ├── implementer.md
+│           ├── reviewer.md
+│           └── converger.md
 ├── flake.nix                # Nix flake for dev environment & build
 ├── flake.lock               # Pinned Nix dependencies
 ├── go.mod                   # Go module definition
@@ -35,7 +52,7 @@ autom8/
 
 ### Task
 
-The fundamental data structure (defined in `src/main.go`) containing:
+The fundamental data structure (defined in `src/core/task.go`) containing:
 - **ID** - Unique identifier (`task-<unix-nano>`)
 - **Prompt** - Implementation instruction
 - **VerificationCriteria** - List of success criteria
@@ -70,6 +87,9 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | `autom8 describe <task-id>` | Show detailed task information |
 | `autom8 delete <task-id>` | Delete a task |
 | `autom8 prune` | Delete all completed tasks |
+| `autom8 edit <task-id>` | Edit an existing task |
+| `autom8 show <worktree>` | Show diff between main and worktree |
+| `autom8 chat <worktree>` | Interactive Claude session in worktree |
 
 ### Flag Reference
 
@@ -80,20 +100,28 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 
 **`autom8 implement`**:
 - `-n <count>` - Number of parallel instances per task (default: 1)
+- `-m <iterations>` - Maximum iterations per worktree (default: unlimited)
 
 **`autom8 converge`**:
 - `-m, --merge` - Auto-merge the winning implementation
 
 ## Code Organization
 
-All logic is in `src/main.go`. Key functions:
+Code is organized into three packages:
 
-- `main()` - CLI argument parsing and command dispatch
-- `handleFeature()` - Task creation (interactive & flag-based)
-- `handleList()` - Task listing and formatting
-- `handleImplement()` - Worktree creation, parallel execution
-- `loadTasks()` / `saveTasks()` - JSON persistence to `.autom8/tasks.json`
-- `createWorktreeAndRun()` - Creates worktree, spawns Claude CLI
+### `main` (src/main.go)
+- Defines `rootCmd` cobra command
+- `init()` registers all subcommands from the `cmd` package
+- `main()` executes the root command
+
+### `core` (src/core/)
+- `task.go`: `Task` struct, `LoadTasks()`, `SaveTasks()`, `GetGitRoot()`, `GetAutom8Dir()`, `EnsureAutom8Dir()`, `Truncate()`
+- `worktree.go`: `WorktreeInfo` struct, `GetWorktreeInfo()`, `LoadPids()`, `SavePids()`, `IsProcessRunning()`
+
+### `cmd` (src/cmd/)
+- Each command has its own file exporting a `XxxCmd` variable
+- `styles.go`: Shared lipgloss styles for terminal output
+- `agents/`: Embedded agent templates (implementer.md, reviewer.md, converger.md)
 
 ## Dependencies
 
@@ -103,7 +131,10 @@ All logic is in `src/main.go`. Key functions:
 - Git (for worktree operations)
 - Claude CLI (`claude` command must be in PATH)
 
-**Go dependencies**: None (stdlib only)
+**Go dependencies**:
+- `github.com/spf13/cobra` - CLI framework
+- `github.com/charmbracelet/huh` - Interactive forms
+- `github.com/charmbracelet/lipgloss` - Terminal styling
 
 ## Build & Run
 
@@ -145,30 +176,28 @@ User reviews/merges via standard git
 
 ## Key Design Decisions
 
-1. **Single-file architecture** - All logic in one file for simplicity
+1. **Multi-file architecture** - Organized by package (core, cmd) for maintainability
 2. **Git-native** - Uses worktrees and branches, not custom isolation
-3. **Zero dependencies** - Only Go stdlib, minimal attack surface
+3. **Minimal dependencies** - Only essential libraries (cobra, huh, lipgloss)
 4. **JSON storage** - Human-readable, version-controllable tasks
-5. **Background execution** - Claude processes run detached
+5. **Iterative execution** - Claude processes run in loops until "TASK COMPLETE"
 
 ## Common Modifications
 
 ### Adding a new command
 
-1. Add case in `main()` switch statement
-2. Create `handleNewCommand()` function
-3. Update help text in default case
+1. Create `src/cmd/newcommand.go` with `NewCommandCmd` variable
+2. Add `rootCmd.AddCommand(cmd.NewCommandCmd)` in `src/main.go` `init()`
 
 ### Modifying Task structure
 
-1. Update `Task` struct definition
+1. Update `Task` struct in `src/core/task.go`
 2. Ensure backward compatibility with existing `tasks.json`
-3. Update `handleFeature()` for new fields
-4. Update `handleList()` display
+3. Update relevant commands in `src/cmd/`
 
 ### Changing Claude invocation
 
-Look for `exec.Command("claude", ...)` in `createWorktreeAndRun()`
+Look for `exec.Command("claude", ...)` in `src/cmd/implement.go` or `src/cmd/chat.go`
 
 ## Testing Considerations
 
@@ -180,7 +209,7 @@ Look for `exec.Command("claude", ...)` in `createWorktreeAndRun()`
 ## Files to Preserve
 
 - `.autom8/tasks.json` - User's task definitions (should be committed)
-- `src/agents/*.md` - Prompt templates for AI agents (embedded into binary)
+- `src/cmd/agents/*.md` - Prompt templates for AI agents (embedded into binary)
 
 ## Files That Are Ephemeral
 
