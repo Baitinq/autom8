@@ -66,12 +66,12 @@ Do NOT just describe fixes - actually make them. You have edit permissions and s
 After completing your review:
 
 ### If the implementation is satisfactory (no issues found, or you've applied all fixes):
-Output the exact phrase: `REVIEW COMPLETE`
+Output: `<output>REVIEW COMPLETE</output>`
 
 This indicates that all verification criteria are met and the code is ready (either it was correct initially, or you've fixed any issues).
 
 ### If you cannot fix an issue:
-If there's a fundamental problem that requires reimplementation rather than a fix, explain the issue clearly and output the exact phrase: `REVIEW BLOCKED`. Do NOT output `REVIEW COMPLETE`.
+If there's a fundamental problem that requires reimplementation rather than a fix, explain the issue clearly and output: `<output>REVIEW BLOCKED</output>`
 
 ---
 

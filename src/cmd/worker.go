@@ -137,8 +137,8 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		// Write output to log file
 		os.WriteFile(logFile, output, 0644)
 
-		// Check if output contains TASK COMPLETE
-		if strings.Contains(string(output), "TASK COMPLETE") {
+		// Check if output contains TASK COMPLETE signal
+		if strings.Contains(string(output), "<output>TASK COMPLETE</output>") {
 			// Implementation complete - now start the review loop
 			reviewErr := runWorkerReviewLoop(task, workerWorktreePath, logsDir, workerBaseBranch)
 			if reviewErr != nil {
@@ -203,14 +203,14 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 		// Write output to log file
 		os.WriteFile(reviewLogFile, output, 0644)
 
-		// Check if review is blocked (reviewer found issues that require reimplementation)
-		if strings.Contains(string(output), "REVIEW BLOCKED") {
-			return fmt.Errorf("review blocked in iteration %d", reviewIteration)
+		// Check if review is complete (reviewer either found no issues or applied all fixes)
+		if strings.Contains(string(output), "<output>REVIEW COMPLETE</output>") {
+			return nil // Success - review complete
 		}
 
-		// Check if review is complete (reviewer either found no issues or applied all fixes)
-		if strings.Contains(string(output), "REVIEW COMPLETE") {
-			return nil // Success - review complete
+		// Check if review is blocked (reviewer found issues that require reimplementation)
+		if strings.Contains(string(output), "<output>REVIEW BLOCKED</output>") {
+			return fmt.Errorf("review blocked in iteration %d", reviewIteration)
 		}
 
 		// Reviewer made changes or found issues it couldn't fix - loop back for another review pass

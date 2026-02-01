@@ -81,9 +81,9 @@ Before signaling completion, verify ALL criteria are met:
 ### 7. Exit Signal
 When ALL verification criteria are satisfied and the task is complete:
 
-**Output the exact phrase: `TASK COMPLETE`**
+**Output: `<output>TASK COMPLETE</output>`**
 
-This phrase (case-sensitive) tells the system to stop iterating.
+This exact tag tells the system to stop iterating.
 
 ## Workflow Per Iteration
 
@@ -93,7 +93,7 @@ This phrase (case-sensitive) tells the system to stop iterating.
 3. Pick ONE thing to work on
 4. Implement it
 5. Commit with clear message
-6. If ALL criteria met → output "TASK COMPLETE"
+6. If ALL criteria met → output "<output>TASK COMPLETE</output>"
 7. If more work needed → just end (system will re-invoke you)
 ```
 

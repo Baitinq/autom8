@@ -247,8 +247,8 @@ func buildConvergePrompt(task core.Task, worktrees []core.WorktreeInfo, gitRoot 
 	sb.WriteString("- Code quality: Is the code clean, readable, and maintainable?\n")
 	sb.WriteString("- Simplicity: Is the solution appropriately simple without over-engineering?\n\n")
 	sb.WriteString("IMPORTANT: Your response MUST include the exact worktree name of the winner in this format:\n")
-	sb.WriteString("WINNER: <worktree-name>\n\n")
-	sb.WriteString("For example: WINNER: my-task-1\n\n")
+	sb.WriteString("<output>WINNER: <worktree-name></output>\n\n")
+	sb.WriteString("For example: <output>WINNER: my-task-1</output>\n\n")
 	sb.WriteString("Explain your reasoning before declaring the winner.\n")
 
 	return sb.String()
@@ -263,42 +263,15 @@ func parseConvergeResponse(response string, worktrees []core.WorktreeInfo) strin
 		response = jsonResp.Result
 	}
 
-	// Look for "WINNER: <name>" pattern
-	lines := strings.Split(response, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToUpper(line), "WINNER:") {
-			winner := strings.TrimSpace(strings.TrimPrefix(line, "WINNER:"))
-			winner = strings.TrimSpace(strings.TrimPrefix(winner, "winner:"))
-			// Clean up any markdown formatting
-			winner = strings.Trim(winner, "`*_")
-			// Verify it's a valid worktree
+	// Look for "<output>WINNER: name</output>" pattern
+	if start := strings.Index(response, "<output>WINNER:"); start != -1 {
+		start += len("<output>WINNER:")
+		if end := strings.Index(response[start:], "</output>"); end != -1 {
+			winner := strings.TrimSpace(response[start : start+end])
 			for _, wt := range worktrees {
 				if wt.Name == winner {
 					return winner
 				}
-			}
-		}
-	}
-
-	// Fallback: look for any worktree name mentioned as winner
-	responseLower := strings.ToLower(response)
-	for _, wt := range worktrees {
-		// Check if this worktree is mentioned near "winner" or "best"
-		if strings.Contains(responseLower, strings.ToLower(wt.Name)) {
-			idx := strings.Index(responseLower, strings.ToLower(wt.Name))
-			// Check surrounding context for winner-like words
-			start := idx - 50
-			if start < 0 {
-				start = 0
-			}
-			end := idx + len(wt.Name) + 50
-			if end > len(responseLower) {
-				end = len(responseLower)
-			}
-			context := responseLower[start:end]
-			if strings.Contains(context, "winner") || strings.Contains(context, "best") || strings.Contains(context, "recommend") {
-				return wt.Name
 			}
 		}
 	}

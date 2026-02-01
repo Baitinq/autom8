@@ -36,12 +36,12 @@ You are a code evaluation agent for autom8. Your task is to compare multiple imp
 After your analysis, you MUST include the winner in this exact format:
 
 ```
-WINNER: <worktree-name>
+<output>WINNER: <worktree-name></output>
 ```
 
 For example:
 ```
-WINNER: my-task-1
+<output>WINNER: my-task-1</output>
 ```
 
 The worktree name must exactly match one of the provided worktree names.
