@@ -91,13 +91,23 @@ func runAccept(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Squash-merging branch '%s' into current branch...\n", HighlightStyle.Render(branchName))
 
 	// Get the first commit message from the branch to use as the squash commit message
-	firstCommitCmd := exec.Command("git", "-C", gitRoot, "log", "--reverse", "--format=%s", "main.."+branchName)
+	mergeBaseCmd := exec.Command("git", "-C", gitRoot, "merge-base", "HEAD", branchName)
+	mergeBaseOutput, err := mergeBaseCmd.Output()
+	if err != nil {
+		return fmt.Errorf("error getting merge base: %w", err)
+	}
+	mergeBase := strings.TrimSpace(string(mergeBaseOutput))
+	if mergeBase == "" {
+		return fmt.Errorf("could not determine merge base for branch '%s'", branchName)
+	}
+
+	firstCommitCmd := exec.Command("git", "-C", gitRoot, "log", "--reverse", "--format=%B", "-n", "1", fmt.Sprintf("%s..%s", mergeBase, branchName))
 	firstCommitOutput, err := firstCommitCmd.Output()
 	if err != nil {
 		return fmt.Errorf("error getting first commit message: %w", err)
 	}
-	firstCommitMsg := strings.TrimSpace(strings.Split(string(firstCommitOutput), "\n")[0])
-	if firstCommitMsg == "" {
+	firstCommitMsg := string(firstCommitOutput)
+	if strings.TrimSpace(firstCommitMsg) == "" {
 		firstCommitMsg = fmt.Sprintf("Merge %s (autom8 accept)", branchName)
 	}
 
@@ -110,8 +120,8 @@ func runAccept(cmd *cobra.Command, args []string) error {
 	fmt.Printf("%s", string(mergeOutput))
 
 	// Commit the squashed changes with the first commit message
-	commitMsg := fmt.Sprintf("%s (autom8 accept)", firstCommitMsg)
-	commitCmd := exec.Command("git", "-C", gitRoot, "commit", "-m", commitMsg)
+	commitCmd := exec.Command("git", "-C", gitRoot, "commit", "-F", "-")
+	commitCmd.Stdin = strings.NewReader(firstCommitMsg)
 	commitOutput, err := commitCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error committing squash merge: %w\n%s", err, string(commitOutput))
