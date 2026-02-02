@@ -36,20 +36,26 @@ This process is like writing a plan. Before creating a task:
 
 The goal is a well-defined task that an implementation agent can execute without ambiguity. It's better to ask one more question than to create a task with unclear or incorrect requirements.
 
-## Prerequisites
+## Running autom8
 
-This skill requires Go to be installed. The autom8 tool runs directly from source using:
+**Preferred**: If `autom8` is in PATH, use it directly:
+```bash
+autom8 <command> [flags]
+```
 
+**Fallback**: If not installed, run from source (requires Go):
 ```bash
 go run ${CLAUDE_PLUGIN_ROOT}/src <command> [flags]
 ```
 
+Check which to use by running `which autom8` first. Use the binary if available (faster), otherwise fall back to `go run`.
+
 ## When Ready
 
-Once you've discussed the feature enough and the user confirms they're ready to create the task, run `autom8 new` with the appropriate flags:
+Once you've discussed the feature enough and the user confirms they're ready to create the task, run `new` with the appropriate flags:
 
 ```bash
-go run ${CLAUDE_PLUGIN_ROOT}/src new -n "<task-name>" -p "<prompt>" -c "<criterion1>" -c "<criterion2>" ...
+autom8 new -n "<task-name>" -p "<prompt>" -c "<criterion1>" -c "<criterion2>" ...
 ```
 
 ### Flags
@@ -70,7 +76,7 @@ go run ${CLAUDE_PLUGIN_ROOT}/src new -n "<task-name>" -p "<prompt>" -c "<criteri
 ### Example
 
 ```bash
-go run ${CLAUDE_PLUGIN_ROOT}/src new \
+autom8 new \
   -n "add-dry-run-flag" \
   -p "Add a --dry-run flag to the implement command. When set, it should print what would happen (worktrees that would be created, branches, commands) without actually creating anything or spawning Claude processes." \
   -c "implement command accepts --dry-run / -d flag" \
@@ -86,28 +92,28 @@ If a task needs to be modified after creation, use `edit`:
 
 ```bash
 # Rename a task
-go run ${CLAUDE_PLUGIN_ROOT}/src edit my-task -n new-name
+autom8 edit my-task -n new-name
 
 # Update the prompt
-go run ${CLAUDE_PLUGIN_ROOT}/src edit my-task -p "Updated prompt text"
+autom8 edit my-task -p "Updated prompt text"
 
 # Replace all criteria
-go run ${CLAUDE_PLUGIN_ROOT}/src edit my-task -c "new criterion 1" -c "new criterion 2"
+autom8 edit my-task -c "new criterion 1" -c "new criterion 2"
 
 # Change dependency
-go run ${CLAUDE_PLUGIN_ROOT}/src edit my-task -d other-task
+autom8 edit my-task -d other-task
 ```
 
 ## Monitoring Progress
 
-After running `go run ${CLAUDE_PLUGIN_ROOT}/src implement`, use `status` to monitor worktrees:
+After running `autom8 implement`, use `status` to monitor worktrees:
 
 ```bash
-go run ${CLAUDE_PLUGIN_ROOT}/src status
+autom8 status
 ```
 
 - **[implementing (N)]** / **[reviewing]** - Agent actively working
-- **[ready]** - Complete, can accept with `go run ${CLAUDE_PLUGIN_ROOT}/src accept <worktree>`
+- **[ready]** - Complete, can accept with `autom8 accept <worktree>`
 - **[error]** - Stopped in incomplete state (needs intervention)
 - **[idle]** - No active work
 
@@ -119,4 +125,4 @@ Begin by understanding what they want to build. If no arguments, ask what featur
 
 ## Convergence Note
 
-When users ask about evaluating implementations, mention that `go run ${CLAUDE_PLUGIN_ROOT}/src converge` reports both the winning worktree and a brief 1-2 sentence reasoning summary.
+When users ask about evaluating implementations, mention that `autom8 converge` reports both the winning worktree and a brief 1-2 sentence reasoning summary.
