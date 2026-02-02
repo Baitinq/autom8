@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/baitinq/autom8/src/core"
@@ -123,19 +126,14 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		// Create log file for this iteration
 		logFile := filepath.Join(logsDir, fmt.Sprintf("iteration-%d.log", iteration))
 
-		// Run claude synchronously and capture output
+		// Run claude synchronously and stream output to file in real-time
 		claudeCmd := exec.Command("claude", "-p", prompt, "--dangerously-skip-permissions")
 		claudeCmd.Dir = workerWorktreePath
 
-		output, err := claudeCmd.Output()
+		output, err := runCommandWithStreaming(claudeCmd, logFile)
 		if err != nil {
-			// Log the error
-			os.WriteFile(logFile, []byte(fmt.Sprintf("ERROR: %v\n%s", err, string(output))), 0644)
 			return fmt.Errorf("implementation iteration %d failed: %w", iteration, err)
 		}
-
-		// Write output to log file
-		os.WriteFile(logFile, output, 0644)
 
 		// Check if output contains TASK COMPLETE signal
 		if strings.Contains(string(output), "<output>TASK COMPLETE</output>") {
@@ -189,19 +187,15 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 		}
 
 		// Run codex exec with the review prompt via stdin to avoid argv length limits
+		// Stream output to file in real-time
 		codexCmd := exec.Command("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-")
 		codexCmd.Dir = worktreePath
 		codexCmd.Stdin = strings.NewReader(reviewPrompt)
 
-		output, err := codexCmd.CombinedOutput()
+		output, err := runCommandWithStreaming(codexCmd, reviewLogFile)
 		if err != nil {
-			// Log the error with full output
-			os.WriteFile(reviewLogFile, []byte(fmt.Sprintf("ERROR: %v\n\nOutput:\n%s", err, string(output))), 0644)
 			return fmt.Errorf("review iteration %d failed: %w", reviewIteration, err)
 		}
-
-		// Write output to log file
-		os.WriteFile(reviewLogFile, output, 0644)
 
 		// Check if review is complete (reviewer either found no issues or applied all fixes)
 		if strings.Contains(string(output), "<output>REVIEW COMPLETE</output>") {
@@ -215,6 +209,87 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 
 		// Reviewer made changes or found issues it couldn't fix - loop back for another review pass
 	}
+}
+
+// runCommandWithStreaming runs a command and streams its output to a log file in real-time
+// while also capturing the full output in memory for processing.
+// Returns the captured output and any error from the command execution.
+func runCommandWithStreaming(cmd *exec.Cmd, logFile string) ([]byte, error) {
+	// Open log file for streaming output
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer f.Close()
+
+	// Get stdout and stderr pipes
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start command: %w", err)
+	}
+
+	// Buffer to capture full output for processing
+	var outputBuf bytes.Buffer
+
+	// Create a MultiWriter to write to both the file and buffer
+	multiWriter := io.MultiWriter(f, &outputBuf)
+	lockedWriter := &lockedWriter{w: multiWriter}
+
+	// Use goroutines to copy stdout and stderr concurrently
+	errChan := make(chan error, 2)
+
+	go func() {
+		_, err := io.Copy(lockedWriter, stdout)
+		errChan <- err
+	}()
+
+	go func() {
+		_, err := io.Copy(lockedWriter, stderr)
+		errChan <- err
+	}()
+
+	// Wait for both copy operations to complete
+	copyErr1 := <-errChan
+	copyErr2 := <-errChan
+
+	// Wait for command to finish
+	cmdErr := cmd.Wait()
+
+	// Check for errors (prefer command error over copy errors)
+	if cmdErr != nil {
+		// Write error to log file
+		fmt.Fprintf(f, "\n\nERROR: %v\n", cmdErr)
+		return outputBuf.Bytes(), fmt.Errorf("command failed: %w", cmdErr)
+	}
+
+	if copyErr1 != nil {
+		return outputBuf.Bytes(), fmt.Errorf("error copying stdout: %w", copyErr1)
+	}
+	if copyErr2 != nil {
+		return outputBuf.Bytes(), fmt.Errorf("error copying stderr: %w", copyErr2)
+	}
+
+	return outputBuf.Bytes(), nil
+}
+
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (lw *lockedWriter) Write(p []byte) (int, error) {
+	lw.mu.Lock()
+	defer lw.mu.Unlock()
+	return lw.w.Write(p)
 }
 
 // buildReviewPrompt constructs the prompt for the reviewer agent.
