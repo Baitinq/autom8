@@ -194,5 +194,28 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
+
+	// Count error worktrees across all tasks
+	errorCount := 0
+	for _, worktrees := range worktreesByTask {
+		for _, wt := range worktrees {
+			// Error state: not running but in implementing/reviewing phase or with uncommitted changes
+			if !wt.IsRunning && (wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing || wt.HasChanges) {
+				errorCount++
+			}
+		}
+	}
+
+	// Show hint if there are error worktrees
+	if errorCount > 0 {
+		hint := fmt.Sprintf("%d worktree", errorCount)
+		if errorCount > 1 {
+			hint += "s"
+		}
+		hint += " in error state. Run "
+		fmt.Println(ErrorStyle.Render("⚠") + " " + hint + HighlightStyle.Render("autom8 implement --resume") + " to restart.")
+		fmt.Println()
+	}
+
 	return nil
 }

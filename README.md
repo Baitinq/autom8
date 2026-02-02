@@ -47,6 +47,12 @@ autom8 implement
 
 # Run 3 parallel instances per task
 autom8 implement -n 3
+
+# Resume error worktrees across all tasks
+autom8 implement --resume
+
+# Resume error worktrees for a specific task
+autom8 implement my-task --resume
 ```
 
 Each task gets its own git worktree in `.autom8/worktrees/`. Tasks with dependencies branch from their dependency's branch.
@@ -57,7 +63,7 @@ Use `autom8 status` or `autom8 describe <task>` to see worktree states:
 
 - **[implementing (N)]** / **[reviewing]** - Agent is actively working
 - **[ready]** - Complete, can run `autom8 accept <worktree>` to merge
-- **[error]** - Stopped in incomplete state (needs manual intervention)
+- **[error]** - Stopped in incomplete state (run `autom8 implement --resume` to restart)
 - **[idle]** - No active work
 
 With `-n 3`, you get exponential branching:
