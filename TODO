@@ -19,7 +19,6 @@
 29. converge shoudl have winner reasoning
 30. If you start a task on one computer, it will be in progress but in another computer too as the task.json changes. We should probably have gitignored task progress somehow? idk
 31. better error recovery for loops
-32. accept should merge squash
 33. auto ocmplete would be awesome
 34. skill that can be installed
 35. maybe we should edit the skill to make it not design the implementation and leave it up to the implementers
@@ -28,3 +27,4 @@
 38. notify when implementaitons done?
 39. blocking command for agents
 40. implement auto covnerge?
+41. make it easier to gitignore things (maybe we should have a .autom8/internal)
