@@ -22,3 +22,9 @@
 32. accept should merge squash
 33. auto ocmplete would be awesome
 34. skill that can be installed
+35. maybe we should edit the skill to make it not design the implementation and leave it up to the implementers
+36. logs subcommand
+37. prune should also prune old logs
+38. notify when implementaitons done?
+39. blocking command for agents
+40. implement auto covnerge?
