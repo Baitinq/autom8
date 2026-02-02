@@ -1,0 +1,8 @@
+{
+  "name": "autom8",
+  "description": "Design tasks for autom8 AI-driven development workflows",
+  "version": "1.0.0",
+  "author": { "name": "baitinq" },
+  "repository": "https://github.com/baitinq/autom8",
+  "keywords": ["autom8", "ai-agents", "workflow", "parallel-development"]
+}

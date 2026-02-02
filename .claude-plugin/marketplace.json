@@ -1,0 +1,15 @@
+{
+  "name": "autom8",
+  "owner": {
+    "name": "baitinq",
+    "email": "baitinq@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "autom8",
+      "source": "./",
+      "description": "Design tasks for autom8 AI-driven development workflows",
+      "version": "1.0.0"
+    }
+  ]
+}
