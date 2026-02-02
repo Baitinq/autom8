@@ -40,6 +40,11 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	logsDir, err := core.GetLogsDir()
+	if err != nil {
+		return err
+	}
+
 	taskMap := make(map[string]core.Task, len(tasks))
 	for _, t := range tasks {
 		taskMap[t.ID] = t
@@ -67,6 +72,7 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	var remaining []core.Task
 	var pruned int
 	var worktreesRemoved int
+	var logDirsRemoved int
 	var skippedDependents int
 
 	for _, t := range tasks {
@@ -104,6 +110,11 @@ func runPrune(cmd *cobra.Command, args []string) error {
 							deleteBranchCmd := exec.Command("git", "-C", gitRoot, "branch", "-D", branchName)
 							deleteBranchCmd.Run()
 						}
+						// Remove log directory for this worktree
+						logDirPath := filepath.Join(logsDir, worktreeName)
+						if err := os.RemoveAll(logDirPath); err == nil {
+							logDirsRemoved++
+						}
 					}
 				}
 			}
@@ -112,13 +123,65 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if pruned == 0 && skippedDependents == 0 {
+	// Build set of remaining task IDs for orphan detection
+	remainingTaskIDs := make(map[string]struct{}, len(remaining))
+	for _, t := range remaining {
+		remainingTaskIDs[t.ID] = struct{}{}
+	}
+
+	// Build set of existing worktree names
+	existingWorktrees := make(map[string]struct{})
+	if entries, err := os.ReadDir(worktreesDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				existingWorktrees[entry.Name()] = struct{}{}
+			}
+		}
+	}
+
+	// Scan logs directory for orphaned log directories
+	if logEntries, err := os.ReadDir(logsDir); err == nil {
+		for _, entry := range logEntries {
+			if !entry.IsDir() {
+				continue
+			}
+			logDirName := entry.Name()
+
+			// Skip if there's a matching worktree
+			if _, hasWorktree := existingWorktrees[logDirName]; hasWorktree {
+				continue
+			}
+
+			// Skip if the log dir belongs to a remaining task
+			if taskID, ok := core.TaskIDFromWorktree(logDirName, remainingTaskIDs); ok && taskID != "" {
+				continue
+			}
+
+			// This log directory is orphaned - remove it
+			logDirPath := filepath.Join(logsDir, logDirName)
+			if err := os.RemoveAll(logDirPath); err == nil {
+				logDirsRemoved++
+			}
+		}
+	}
+
+	if pruned == 0 && skippedDependents == 0 && logDirsRemoved == 0 {
 		fmt.Println(SubtitleStyle.Render("No completed tasks to prune."))
 		return nil
 	}
 
-	if pruned == 0 && skippedDependents > 0 {
+	if pruned == 0 && skippedDependents > 0 && logDirsRemoved == 0 {
 		fmt.Println(SubtitleStyle.Render(fmt.Sprintf("Skipped %d completed task(s) needed by active dependents.", skippedDependents)))
+		return nil
+	}
+
+	// Only cleaned orphaned logs, no tasks pruned
+	if pruned == 0 && logDirsRemoved > 0 {
+		msg := fmt.Sprintf("Removed %d orphaned log dir(s).", logDirsRemoved)
+		if skippedDependents > 0 {
+			msg += fmt.Sprintf(" Skipped %d task(s) needed by active dependents.", skippedDependents)
+		}
+		fmt.Println(SuccessStyle.Render(msg))
 		return nil
 	}
 
@@ -126,7 +189,11 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error saving tasks: %w", err)
 	}
 
-	msg := fmt.Sprintf("Pruned %d completed task(s), removed %d worktree(s).", pruned, worktreesRemoved)
+	msg := fmt.Sprintf("Pruned %d completed task(s), removed %d worktree(s)", pruned, worktreesRemoved)
+	if logDirsRemoved > 0 {
+		msg += fmt.Sprintf(", removed %d log dir(s)", logDirsRemoved)
+	}
+	msg += "."
 	if skippedDependents > 0 {
 		msg += fmt.Sprintf(" Skipped %d task(s) needed by active dependents.", skippedDependents)
 	}

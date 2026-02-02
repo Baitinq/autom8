@@ -55,7 +55,8 @@ autom8/
 ├── TODO                     # Planned work items
 └── .autom8/                 # Runtime directory (gitignored except tasks.json)
     ├── tasks.json           # Persisted task definitions (commit this)
-    └── worktrees/           # Ephemeral worktree directories (gitignored)
+    ├── worktrees/           # Ephemeral worktree directories (gitignored)
+    └── logs/                # Per-worktree logs (gitignored)
 ```
 
 ## Core Concepts
@@ -109,7 +110,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | `autom8 inspect <worktree>` | Open a shell in a worktree directory |
 | `autom8 describe <task-id>` | Show detailed task information |
 | `autom8 delete <task-id>` | Delete a task |
-| `autom8 prune` | Delete all completed tasks |
+| `autom8 prune` | Delete all completed tasks and clean up worktrees/logs |
 | `autom8 edit <task-id>` | Edit an existing task |
 | `autom8 show <worktree>` | Show diff between main and worktree |
 | `autom8 chat <worktree>` | Interactive Claude session in worktree |

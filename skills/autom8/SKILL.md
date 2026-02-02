@@ -117,6 +117,10 @@ autom8 status
 - **[error]** - Stopped in incomplete state (use `autom8 implement --resume` to restart)
 - **[idle]** - No active work
 
+## Cleanup
+
+Use `autom8 prune` to remove completed tasks and clean up their worktrees/logs.
+
 ## Start
 
 If the user provided arguments, they're describing their feature idea: $ARGUMENTS

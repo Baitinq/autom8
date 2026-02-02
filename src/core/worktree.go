@@ -167,6 +167,15 @@ func GetWorktreesDir() (string, error) {
 	return filepath.Join(autom8Dir, "worktrees"), nil
 }
 
+// GetLogsDir returns the path to the logs directory (.autom8/logs/).
+func GetLogsDir() (string, error) {
+	autom8Dir, err := GetAutom8Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(autom8Dir, "logs"), nil
+}
+
 // ListWorktreesByTask groups worktrees by task ID.
 func ListWorktreesByTask(worktreesDir string, taskIDs map[string]struct{}, pids map[string]int) map[string][]WorktreeInfo {
 	worktreesByTask := make(map[string][]WorktreeInfo)

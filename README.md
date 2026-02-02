@@ -82,6 +82,14 @@ autom8 converge my-task
 
 Converge outputs the winning worktree plus a short 1-2 sentence reasoning summary.
 
+### Cleanup completed tasks
+
+```bash
+autom8 prune
+```
+
+Prune removes completed tasks and cleans up their worktrees/logs.
+
 ## How it works
 
 1. **Define** - Use `autom8 new` to create tasks with prompts, verification criteria, and dependencies
@@ -92,6 +100,7 @@ Converge outputs the winning worktree plus a short 1-2 sentence reasoning summar
 
 - `.autom8/tasks.json` - Task definitions (should be committed)
 - `.autom8/worktrees/` - Git worktrees for implementations (gitignored)
+- `.autom8/logs/` - Per-worktree logs (gitignored; pruned with completed tasks)
 
 ## License
 
