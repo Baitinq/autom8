@@ -14,12 +14,13 @@ import (
 var AcceptCmd = &cobra.Command{
 	Use:     "accept <worktree-name>",
 	Aliases: []string{"merge"},
-	Short:   "Merge a worktree branch into current branch",
-	Long: `Accept and merge a completed implementation from a worktree.
+	Short:   "Squash-merge a worktree branch into current branch",
+	Long: `Accept and squash-merge a completed implementation from a worktree.
 
 This command will:
   1. Auto-commit any uncommitted changes in the worktree
-  2. Merge the worktree's branch into your current branch
+  2. Squash-merge the worktree's branch into your current branch
+  3. Use the first commit message from the branch as the commit message
 
 The worktree and branch are preserved. Use 'autom8 prune' to clean them up.`,
 	Example: `  autom8 accept my-task-1`,
@@ -87,15 +88,35 @@ func runAccept(cmd *cobra.Command, args []string) error {
 		fmt.Println(SuccessStyle.Render("Auto-committed successfully."))
 	}
 
-	fmt.Printf("Merging branch '%s' into current branch...\n", HighlightStyle.Render(branchName))
+	fmt.Printf("Squash-merging branch '%s' into current branch...\n", HighlightStyle.Render(branchName))
 
-	// Merge the branch into the current branch
-	mergeCmd := exec.Command("git", "-C", gitRoot, "merge", branchName, "-m", fmt.Sprintf("Merge %s (autom8 accept)", branchName))
+	// Get the first commit message from the branch to use as the squash commit message
+	firstCommitCmd := exec.Command("git", "-C", gitRoot, "log", "--reverse", "--format=%s", "main.."+branchName)
+	firstCommitOutput, err := firstCommitCmd.Output()
+	if err != nil {
+		return fmt.Errorf("error getting first commit message: %w", err)
+	}
+	firstCommitMsg := strings.TrimSpace(strings.Split(string(firstCommitOutput), "\n")[0])
+	if firstCommitMsg == "" {
+		firstCommitMsg = fmt.Sprintf("Merge %s (autom8 accept)", branchName)
+	}
+
+	// Squash merge the branch into the current branch
+	mergeCmd := exec.Command("git", "-C", gitRoot, "merge", "--squash", branchName)
 	mergeOutput, err := mergeCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error merging branch: %w\n%s\nResolve conflicts manually, then run 'autom8 accept' again to clean up", err, string(mergeOutput))
 	}
 	fmt.Printf("%s", string(mergeOutput))
+
+	// Commit the squashed changes with the first commit message
+	commitMsg := fmt.Sprintf("%s (autom8 accept)", firstCommitMsg)
+	commitCmd := exec.Command("git", "-C", gitRoot, "commit", "-m", commitMsg)
+	commitOutput, err := commitCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error committing squash merge: %w\n%s", err, string(commitOutput))
+	}
+	fmt.Printf("%s", string(commitOutput))
 
 	// Mark the task as completed
 	tasks, err := core.LoadTasks()
