@@ -90,6 +90,15 @@ autom8 edit my-task -c "new criterion 1" -c "new criterion 2"
 autom8 edit my-task -d other-task
 ```
 
+## Monitoring Progress
+
+After running `autom8 implement`, use `autom8 status` to monitor worktrees:
+
+- **[implementing (N)]** / **[reviewing]** - Agent actively working
+- **[ready]** - Complete, can accept with `autom8 accept <worktree>`
+- **[error]** - Stopped in incomplete state (needs intervention)
+- **[idle]** - No active work
+
 ## Start
 
 If the user provided arguments, they're describing their feature idea: $ARGUMENTS

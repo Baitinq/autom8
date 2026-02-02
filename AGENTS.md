@@ -78,6 +78,19 @@ Each agent runs in an isolated git worktree at `.autom8/worktrees/{taskID}-{inst
 - Separate branch per implementation
 - No conflicts between parallel agents
 
+### Worktree Status Labels
+
+Worktrees display different status labels in `autom8 status` and `autom8 describe`:
+
+- **[implementing (N)]** - Agent is actively implementing (iteration N)
+- **[reviewing]** / **[reviewing (fix N)]** - Agent is in review phase
+- **[running]** - Agent is running (fallback when phase unknown)
+- **[ready]** - Implementation complete, ready to accept
+- **[error]** - Not running but in incomplete state (implementing/reviewing phase or uncommitted changes)
+- **[idle]** - No active work, no pending changes
+
+Only `[ready]` worktrees show the accept hint (`autom8 accept <worktree>`).
+
 ### Exponential Branching
 
 For dependent tasks, worktrees branch from EACH instance of the parent task:

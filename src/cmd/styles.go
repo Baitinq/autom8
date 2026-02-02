@@ -31,6 +31,10 @@ var (
 				Foreground(lipgloss.Color("99")).
 				Bold(true)
 
+	StatusErrorStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("196")).
+				Bold(true)
+
 	StatusCompletedStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("42")).
 				Bold(true)
