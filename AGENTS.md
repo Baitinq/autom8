@@ -113,6 +113,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | `autom8 prune` | Delete all completed tasks and clean up worktrees/logs |
 | `autom8 edit <task-id>` | Edit an existing task |
 | `autom8 show <worktree>` | Show diff between main and worktree |
+| `autom8 logs <worktree>` | Stream implementation/review logs for a worktree |
 | `autom8 chat <worktree>` | Interactive Claude session in worktree |
 
 ### Flag Reference

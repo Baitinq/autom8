@@ -117,6 +117,12 @@ autom8 status
 - **[error]** - Stopped in incomplete state (use `autom8 implement --resume` to restart)
 - **[idle]** - No active work
 
+Stream logs for a specific worktree in real time:
+
+```bash
+autom8 logs <worktree>
+```
+
 ## Cleanup
 
 Use `autom8 prune` to remove completed tasks and clean up their worktrees/logs.

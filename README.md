@@ -70,6 +70,14 @@ With `-n 3`, you get exponential branching:
 - 2 independent tasks = 6 worktrees
 - 1 dependent task = 9 worktrees (3 instances per each of 3 parent instances)
 
+### Stream worktree logs
+
+```bash
+autom8 logs <worktree>
+```
+
+Streams implementation and review logs in real time and switches when new iteration logs are created.
+
 ### Converge implementations
 
 ```bash
