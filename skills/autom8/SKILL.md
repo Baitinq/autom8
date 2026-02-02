@@ -114,7 +114,7 @@ autom8 status
 
 - **[implementing (N)]** / **[reviewing]** - Agent actively working
 - **[ready]** - Complete, can accept with `autom8 accept <worktree>`
-- **[error]** - Stopped in incomplete state (needs intervention)
+- **[error]** - Stopped in incomplete state (use `autom8 implement --resume` to restart)
 - **[idle]** - No active work
 
 ## Start

@@ -86,7 +86,7 @@ Worktrees display different status labels in `autom8 status` and `autom8 describ
 - **[reviewing]** / **[reviewing (fix N)]** - Agent is in review phase
 - **[running]** - Agent is running (fallback when phase unknown)
 - **[ready]** - Implementation complete, ready to accept
-- **[error]** - Not running but in incomplete state (implementing/reviewing phase or uncommitted changes)
+- **[error]** - Not running but in incomplete state (implementing/reviewing phase or uncommitted changes); restart with `autom8 implement --resume`
 - **[idle]** - No active work, no pending changes
 
 Only `[ready]` worktrees show the accept hint (`autom8 accept <worktree>`).
@@ -103,7 +103,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 |---------|-------------|
 | `autom8 new` | Create a new task (interactive or via flags) |
 | `autom8 status` | Display all tasks with status (alias: `list`, `ls`) |
-| `autom8 implement -n N` | Run N parallel agents per task |
+| `autom8 implement -n N` | Run N parallel agents per task; use `--resume` to restart error worktrees |
 | `autom8 converge` | Use AI to pick best implementation from multiple worktrees, with a short reasoning summary |
 | `autom8 accept <worktree>` | Merge a worktree branch and clean up |
 | `autom8 inspect <worktree>` | Open a shell in a worktree directory |
@@ -131,6 +131,8 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 **`autom8 implement`**:
 - `-n <count>` - Number of parallel instances per task (default: 1)
 - `-m <iterations>` - Maximum iterations per worktree (default: unlimited)
+- `--add` - Add more implementations to an existing task (allows in-progress tasks)
+- `--resume` - Restart workers for worktrees in error state (ignores `-n`)
 
 **`autom8 converge`**:
 - `-m, --merge` - Auto-merge the winning implementation
