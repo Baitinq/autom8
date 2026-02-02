@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/baitinq/autom8/src/core"
 	"github.com/spf13/cobra"
@@ -25,6 +26,7 @@ var (
 	numInstances  int
 	maxIterations int
 	addMode       bool
+	resumeMode    bool
 )
 
 var ImplementCmd = &cobra.Command{
@@ -41,7 +43,10 @@ is exponential - each instance of a dependent task branches from each
 instance of its parent task.
 
 The command spawns worker subprocesses for each worktree and returns
-immediately. Use 'autom8 status' to monitor progress.`,
+immediately. Use 'autom8 status' to monitor progress.
+
+Use --resume to restart workers for worktrees that are in error state
+(not running but in implementing/reviewing phase or with uncommitted changes).`,
 	Example: `  # Implement all pending tasks
   autom8 implement
 
@@ -53,7 +58,13 @@ immediately. Use 'autom8 status' to monitor progress.`,
   autom8 implement my-task -n 3
 
   # Add more implementations to an existing task
-  autom8 implement my-task -n 2 --add`,
+  autom8 implement my-task -n 2 --add
+
+  # Resume error worktrees across all tasks
+  autom8 implement --resume
+
+  # Resume error worktrees for a specific task
+  autom8 implement my-task --resume`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runImplement,
 }
@@ -62,6 +73,7 @@ func init() {
 	ImplementCmd.Flags().IntVarP(&numInstances, "instances", "n", 1, "Number of parallel instances per task")
 	ImplementCmd.Flags().IntVarP(&maxIterations, "max-iterations", "m", 0, "Maximum iterations per worktree (0 = unlimited)")
 	ImplementCmd.Flags().BoolVar(&addMode, "add", false, "Add more implementations to an existing task (allows in-progress tasks)")
+	ImplementCmd.Flags().BoolVar(&resumeMode, "resume", false, "Restart workers for worktrees in error state")
 }
 
 func loadAgentTemplate(name string) (string, error) {
@@ -214,6 +226,11 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	if len(tasks) == 0 {
 		fmt.Println(SubtitleStyle.Render("No tasks found. Use 'autom8 new' to create one."))
 		return nil
+	}
+
+	// Handle resume mode
+	if resumeMode {
+		return runResumeErrorWorktrees(gitRoot, tasks, targetTaskID, maxIterations)
 	}
 
 	// Filter tasks to implement
@@ -471,4 +488,170 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 
 	pid := workerCmd.Process.Pid
 	return fmt.Sprintf("  %s %s (PID %d, branch: %s)", SuccessStyle.Render("[spawned]"), instanceID, pid, HighlightStyle.Render(branchName))
+}
+
+// runResumeErrorWorktrees finds all error worktrees and restarts workers for them.
+// If targetTaskID is non-empty, only worktrees for that task are resumed.
+func runResumeErrorWorktrees(gitRoot string, tasks []core.Task, targetTaskID string, maxIter int) error {
+	worktreesDir, err := core.GetWorktreesDir()
+	if err != nil {
+		return err
+	}
+
+	// Build task ID set and task map
+	taskIDs := make(map[string]struct{})
+	taskMap := make(map[string]core.Task)
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
+		taskMap[t.ID] = t
+	}
+
+	// Get PIDs and list worktrees
+	pids, _ := core.LoadPids()
+	worktreesByTask := core.ListWorktreesByTask(worktreesDir, taskIDs, pids)
+
+	// Find error worktrees
+	var errorWorktrees []core.WorktreeInfo
+	var errorTaskIDs []string // Parallel slice to track task IDs
+
+	for taskID, worktrees := range worktreesByTask {
+		// If targetTaskID is specified, only consider that task
+		if targetTaskID != "" && taskID != targetTaskID {
+			continue
+		}
+
+		for _, wt := range worktrees {
+			// Error state: not running but in implementing/reviewing phase or with uncommitted changes
+			if !wt.IsRunning && (wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing || wt.HasChanges) {
+				errorWorktrees = append(errorWorktrees, wt)
+				errorTaskIDs = append(errorTaskIDs, taskID)
+			}
+		}
+	}
+
+	if len(errorWorktrees) == 0 {
+		if targetTaskID != "" {
+			fmt.Println(SubtitleStyle.Render(fmt.Sprintf("No error worktrees found for task '%s'.", targetTaskID)))
+		} else {
+			fmt.Println(SubtitleStyle.Render("No error worktrees found."))
+		}
+		return nil
+	}
+
+	// Get executable path for spawning workers
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	fmt.Println(TitleStyle.Render("Resuming Error Worktrees"))
+	fmt.Println()
+	fmt.Printf("  %s %d\n", SubtitleStyle.Render("Worktrees to resume:"), len(errorWorktrees))
+	fmt.Println()
+
+	// Spawn workers for each error worktree
+	var spawnedWorkers []string
+	for i, wt := range errorWorktrees {
+		taskID := errorTaskIDs[i]
+		task := taskMap[taskID]
+		result := spawnWorkerForExistingWorktree(task, wt, worktreesDir, exePath, maxIter)
+		spawnedWorkers = append(spawnedWorkers, result)
+	}
+
+	// Print results
+	for _, result := range spawnedWorkers {
+		fmt.Println(result)
+	}
+
+	fmt.Println()
+	fmt.Println(SuccessStyle.Render("Workers restarted!"))
+	fmt.Println(SubtitleStyle.Render("Use 'autom8 status' to monitor progress."))
+	return nil
+}
+
+// spawnWorkerForExistingWorktree spawns a worker subprocess for an existing worktree.
+// Unlike spawnWorkerForTask, this does not create a new worktree or branch.
+func spawnWorkerForExistingWorktree(task core.Task, wt core.WorktreeInfo, worktreesDir, exePath string, maxIter int) string {
+	worktreePath := wt.Path
+	worktreeName := wt.Name
+	autom8Path := filepath.Dir(worktreesDir)
+
+	// Check if worker is already running
+	pidFile := filepath.Join(autom8Path, "logs", worktreeName, core.WorkerPidFile)
+	if pidData, err := os.ReadFile(pidFile); err == nil {
+		if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
+			if core.IsProcessRunning(pid) {
+				return fmt.Sprintf("  %s %s (worker already running, PID %d)", SubtitleStyle.Render("[skip]"), worktreeName, pid)
+			}
+		}
+	}
+
+	// Determine base branch from the worktree's branch name
+	// Branch is "autom8/{worktree-name}", base branch depends on whether task has dependency
+	var baseBranch string
+	if task.DependsOn != "" {
+		// For dependent tasks, extract parent suffix from worktree name
+		// Worktree name format: {task-id}-{parent-instance}-{instance}
+		// We need the base branch: autom8/{parent-task-id}-{parent-instance}
+		suffix := strings.TrimPrefix(worktreeName, task.ID)
+		parts := strings.Split(suffix, "-")
+		if len(parts) >= 3 {
+			// Format: -{parent-instance}-{instance}, we want -{parent-instance}
+			parentSuffix := "-" + parts[1]
+			baseBranch = fmt.Sprintf("autom8/%s%s", task.DependsOn, parentSuffix)
+		} else {
+			baseBranch = "main"
+		}
+	} else {
+		baseBranch = "main"
+	}
+
+	// Create/ensure logs directory
+	logsDir := filepath.Join(autom8Path, "logs", worktreeName)
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return fmt.Sprintf("  %s %s: failed to create logs dir: %v", ErrorStyle.Render("[error]"), worktreeName, err)
+	}
+
+	// Spawn a detached worker subprocess
+	workerArgs := []string{
+		"_worker",
+		"--worktree-path", worktreePath,
+		"--base-branch", baseBranch,
+		"--task-id", task.ID,
+	}
+	if maxIter > 0 {
+		workerArgs = append(workerArgs, "--max-iterations", strconv.Itoa(maxIter))
+	}
+
+	workerCmd := exec.Command(exePath, workerArgs...)
+
+	// Redirect stdout/stderr to log file (append to existing log)
+	logFile := filepath.Join(logsDir, workerLogFile)
+	logFd, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Sprintf("  %s %s: failed to open log file: %v", ErrorStyle.Render("[error]"), worktreeName, err)
+	}
+
+	// Write resume separator to log
+	fmt.Fprintf(logFd, "\n\n--- RESUME at %s ---\n\n", time.Now().Format(time.RFC3339))
+
+	workerCmd.Stdout = logFd
+	workerCmd.Stderr = logFd
+
+	// Set up process attributes for detachment (setsid equivalent)
+	workerCmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true,
+	}
+
+	// Start the worker
+	if err := workerCmd.Start(); err != nil {
+		logFd.Close()
+		return fmt.Sprintf("  %s %s: failed to start worker: %v", ErrorStyle.Render("[error]"), worktreeName, err)
+	}
+
+	// Close log file descriptor (worker has its own reference now)
+	logFd.Close()
+
+	pid := workerCmd.Process.Pid
+	return fmt.Sprintf("  %s %s (PID %d)", SuccessStyle.Render("[resumed]"), NameStyle.Render(worktreeName), pid)
 }
