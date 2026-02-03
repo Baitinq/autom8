@@ -145,8 +145,8 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 				wtStatus = StatusInProgressStyle.Render("[running]")
 			} else if wt.Phase == core.WorktreePhaseReady {
 				wtStatus = StatusReadyStyle.Render("[ready]")
-			} else if wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing || wt.HasChanges {
-				// Non-running worktree with implementing/reviewing phase or uncommitted changes = error
+			} else if wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing {
+				// Non-running worktree with implementing/reviewing phase = error (worker died while working)
 				wtStatus = StatusErrorStyle.Render("[error]")
 			} else {
 				wtStatus = SubtitleStyle.Render("[idle]")

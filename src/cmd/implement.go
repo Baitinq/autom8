@@ -528,8 +528,8 @@ func runResumeErrorWorktrees(gitRoot string, tasks []core.Task, targetTaskID str
 		}
 
 		for _, wt := range worktrees {
-			// Error state: not running but in implementing/reviewing phase or with uncommitted changes
-			if !wt.IsRunning && (wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing || wt.HasChanges) {
+			// Error state: not running but in implementing/reviewing phase (worker died while working)
+			if !wt.IsRunning && (wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing) {
 				errorWorktrees = append(errorWorktrees, wt)
 				errorTaskIDs = append(errorTaskIDs, taskID)
 			}

@@ -148,8 +148,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 					wtStatus = StatusInProgressStyle.Render("[running]")
 				} else if wt.Phase == core.WorktreePhaseReady {
 					wtStatus = StatusReadyStyle.Render("[ready]")
-				} else if wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing || wt.HasChanges {
-					// Non-running worktree with implementing/reviewing phase or uncommitted changes = error
+				} else if wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing {
+					// Non-running worktree with implementing/reviewing phase = error (worker died while working)
 					wtStatus = StatusErrorStyle.Render("[error]")
 				} else {
 					wtStatus = SubtitleStyle.Render("[idle]")
@@ -199,9 +199,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	errorCount := 0
 	for _, worktrees := range worktreesByTask {
 		for _, wt := range worktrees {
-			// Error state: not running but in implementing/reviewing phase or with uncommitted changes
-			// Note: Ready worktrees with uncommitted changes are NOT errors (display shows [ready])
-			if !wt.IsRunning && wt.Phase != core.WorktreePhaseReady && (wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing || wt.HasChanges) {
+			// Error state: not running but in implementing/reviewing phase (worker died while working)
+			if !wt.IsRunning && (wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing) {
 				errorCount++
 			}
 		}
