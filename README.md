@@ -90,6 +90,16 @@ autom8 converge my-task
 
 Converge outputs the winning worktree plus a short 1-2 sentence reasoning summary.
 
+### Mark tasks complete
+
+```bash
+autom8 complete my-task
+# or
+autom8 done my-task
+```
+
+Use this when a task is finished without accepting a worktree (for example, you implemented it manually).
+
 ### Cleanup completed tasks
 
 ```bash

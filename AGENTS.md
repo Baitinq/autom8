@@ -110,6 +110,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | `autom8 inspect <worktree>` | Open a shell in a worktree directory |
 | `autom8 describe <task-id>` | Show detailed task information |
 | `autom8 delete <task-id>` | Delete a task |
+| `autom8 complete <task-id>` | Mark a task as completed (alias: `done`) |
 | `autom8 prune` | Delete all completed tasks and clean up worktrees/logs |
 | `autom8 edit <task-id>` | Edit an existing task |
 | `autom8 show <worktree>` | Show diff between default branch and worktree |

@@ -36,6 +36,7 @@ func init() {
 	rootCmd.AddCommand(cmd.ChatCmd)
 	rootCmd.AddCommand(cmd.WorkerCmd)
 	rootCmd.AddCommand(cmd.LogsCmd)
+	rootCmd.AddCommand(cmd.CompleteCmd)
 }
 
 func main() {

@@ -125,6 +125,14 @@ autom8 logs <worktree>
 
 ## Cleanup
 
+If a task is done without accepting a worktree, mark it complete manually:
+
+```bash
+autom8 complete my-task
+# or
+autom8 done my-task
+```
+
 Use `autom8 prune` to remove completed tasks and clean up their worktrees/logs.
 
 ## Start
