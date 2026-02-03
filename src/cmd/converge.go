@@ -141,9 +141,10 @@ func runConverge(cmd *cobra.Command, args []string) error {
 		// Build the converge prompt
 		convergePrompt := buildConvergePrompt(task, worktrees, gitRoot)
 
-		// Run claude to analyze
-		claudeCmd := exec.Command("claude", "-p", convergePrompt, "--output-format", "json")
+		// Run claude to analyze (use stdin to avoid "argument list too long" error)
+		claudeCmd := exec.Command("claude", "-p", "-", "--output-format", "json")
 		claudeCmd.Dir = gitRoot
+		claudeCmd.Stdin = strings.NewReader(convergePrompt)
 
 		output, err := claudeCmd.Output()
 		if err != nil {
