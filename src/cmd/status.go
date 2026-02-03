@@ -200,7 +200,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	for _, worktrees := range worktreesByTask {
 		for _, wt := range worktrees {
 			// Error state: not running but in implementing/reviewing phase or with uncommitted changes
-			if !wt.IsRunning && (wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing || wt.HasChanges) {
+			// Note: Ready worktrees with uncommitted changes are NOT errors (display shows [ready])
+			if !wt.IsRunning && wt.Phase != core.WorktreePhaseReady && (wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing || wt.HasChanges) {
 				errorCount++
 			}
 		}
