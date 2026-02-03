@@ -122,8 +122,8 @@ func GetWorktreeInfo(worktreesDir, worktreeName string, pids map[string]int) Wor
 		info.HasChanges = len(strings.TrimSpace(string(statusOutput))) > 0
 	}
 
-	// Check how many commits are ahead
-	aheadCmd := exec.Command("git", "-C", worktreePath, "rev-list", "--count", "HEAD", "^main")
+	// Check how many commits are ahead of upstream
+	aheadCmd := exec.Command("git", "-C", worktreePath, "rev-list", "--count", "@{u}..HEAD")
 	if aheadOutput, err := aheadCmd.Output(); err == nil {
 		info.CommitsAhead = strings.TrimSpace(string(aheadOutput))
 	} else {

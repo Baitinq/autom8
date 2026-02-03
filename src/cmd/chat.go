@@ -18,8 +18,8 @@ var ChatCmd = &cobra.Command{
 
 This command gathers context about the worktree including:
   - The original task prompt and verification criteria
-  - Commit history since branching from main
-  - Current diff from main
+  - Commit history since branching
+  - Current diff from base branch
 
 This context is passed to Claude via --system-prompt, allowing you to:
   - Ask questions about what was implemented
@@ -71,16 +71,21 @@ func runChat(cmd *cobra.Command, args []string) error {
 	pids, _ := core.LoadPids()
 	info := core.GetWorktreeInfo(worktreesDir, worktreeName, pids)
 
-	// Gather git log since branching from main
-	logCmd := exec.Command("git", "-C", worktreePath, "log", "--oneline", "main..HEAD")
+	// Get the upstream branch name for display
+	upstreamCmd := exec.Command("git", "-C", worktreePath, "rev-parse", "--abbrev-ref", "@{u}")
+	upstreamOut, _ := upstreamCmd.Output()
+	upstream := strings.TrimSpace(string(upstreamOut))
+
+	// Gather git log since branching
+	logCmd := exec.Command("git", "-C", worktreePath, "log", "--oneline", "@{u}..HEAD")
 	logOutput, _ := logCmd.Output()
 
-	// Gather diff from main
-	diffCmd := exec.Command("git", "-C", worktreePath, "diff", "main...HEAD")
+	// Gather diff from upstream
+	diffCmd := exec.Command("git", "-C", worktreePath, "diff", "@{u}...HEAD")
 	diffOutput, _ := diffCmd.Output()
 
 	// Build system prompt with context
-	systemPrompt := buildChatSystemPrompt(&task, worktreeName, info.Branch, string(logOutput), string(diffOutput))
+	systemPrompt := buildChatSystemPrompt(&task, worktreeName, info.Branch, upstream, string(logOutput), string(diffOutput))
 
 	// Display worktree info before starting
 	fmt.Println(TitleStyle.Render("Interactive Chat Session"))
@@ -90,7 +95,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Task ID:"), IDStyle.Render(taskID))
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Task:"), core.Truncate(task.Prompt, 60))
 	if info.CommitsAhead != "0" {
-		fmt.Printf("  %s %s commit(s) ahead of main\n", SubtitleStyle.Render("Progress:"), info.CommitsAhead)
+		fmt.Printf("  %s %s commit(s) ahead of %s\n", SubtitleStyle.Render("Progress:"), info.CommitsAhead, upstream)
 	}
 	fmt.Println()
 	fmt.Println(SubtitleStyle.Render("Starting interactive Claude session with task context..."))
@@ -116,7 +121,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func buildChatSystemPrompt(task *core.Task, worktreeName, branchName, gitLog, gitDiff string) string {
+func buildChatSystemPrompt(task *core.Task, worktreeName, branchName, baseBranch, gitLog, gitDiff string) string {
 	var sb strings.Builder
 
 	sb.WriteString("# Context for This Worktree\n\n")
@@ -142,13 +147,13 @@ func buildChatSystemPrompt(task *core.Task, worktreeName, branchName, gitLog, gi
 	sb.WriteString(fmt.Sprintf("- **Task ID:** %s\n\n", task.ID))
 
 	if gitLog != "" {
-		sb.WriteString("## Commits Since Main\n\n")
+		sb.WriteString(fmt.Sprintf("## Commits Since %s\n\n", baseBranch))
 		sb.WriteString("These commits have been made in this worktree:\n\n")
 		sb.WriteString("```\n")
 		sb.WriteString(gitLog)
 		sb.WriteString("```\n\n")
 	} else {
-		sb.WriteString("## Commits Since Main\n\n")
+		sb.WriteString(fmt.Sprintf("## Commits Since %s\n\n", baseBranch))
 		sb.WriteString("No commits have been made yet in this worktree.\n\n")
 	}
 
@@ -158,13 +163,13 @@ func buildChatSystemPrompt(task *core.Task, worktreeName, branchName, gitLog, gi
 		if len(diff) > 50000 {
 			diff = diff[:50000] + "\n... (diff truncated due to size)"
 		}
-		sb.WriteString("## Current Diff from Main\n\n")
+		sb.WriteString(fmt.Sprintf("## Current Diff from %s\n\n", baseBranch))
 		sb.WriteString("```diff\n")
 		sb.WriteString(diff)
 		sb.WriteString("```\n\n")
 	} else {
-		sb.WriteString("## Current Diff from Main\n\n")
-		sb.WriteString("No changes from main yet.\n\n")
+		sb.WriteString(fmt.Sprintf("## Current Diff from %s\n\n", baseBranch))
+		sb.WriteString(fmt.Sprintf("No changes from %s yet.\n\n", baseBranch))
 	}
 
 	sb.WriteString("## Your Role\n\n")

@@ -38,7 +38,7 @@ var WorkerCmd = &cobra.Command{
 
 func init() {
 	WorkerCmd.Flags().StringVar(&workerWorktreePath, "worktree-path", "", "Path to the worktree directory")
-	WorkerCmd.Flags().StringVar(&workerBaseBranch, "base-branch", "main", "Base branch for review")
+	WorkerCmd.Flags().StringVar(&workerBaseBranch, "base-branch", "", "Base branch for review (defaults to repo default)")
 	WorkerCmd.Flags().StringVar(&workerTaskID, "task-id", "", "Task ID being implemented")
 	WorkerCmd.Flags().IntVar(&workerMaxIter, "max-iterations", 0, "Maximum iterations (0 = unlimited)")
 	WorkerCmd.MarkFlagRequired("worktree-path")
@@ -85,6 +85,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("task not found: %s", workerTaskID)
 	}
 	task := tasks[taskIndex]
+
 
 	// Load the implementer agent template
 	agentTemplate, err := loadAgentTemplate("implementer")

@@ -436,13 +436,20 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 		baseBranch = fmt.Sprintf("autom8/%s", baseBranchID)
 		cmd = exec.Command("git", "-C", gitRoot, "worktree", "add", "-b", branchName, worktreePath, baseBranch)
 	} else {
-		baseBranch = "main"
+		// Get current branch name for independent tasks
+		branchCmd := exec.Command("git", "-C", gitRoot, "rev-parse", "--abbrev-ref", "HEAD")
+		out, _ := branchCmd.Output()
+		baseBranch = strings.TrimSpace(string(out))
 		cmd = exec.Command("git", "-C", gitRoot, "worktree", "add", "-b", branchName, worktreePath)
 	}
 
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Sprintf("  %s %s: %v\n%s", ErrorStyle.Render("[error]"), instanceID, err, string(output))
 	}
+
+	// Set upstream branch for easy diffing later (git diff @{u}...HEAD)
+	upstreamCmd := exec.Command("git", "-C", worktreePath, "branch", "--set-upstream-to="+baseBranch)
+	upstreamCmd.Run() // Ignore errors - not critical
 
 	// Create logs directory for this worktree
 	logsDir := filepath.Join(autom8Path, "logs", instanceID)
@@ -586,25 +593,10 @@ func spawnWorkerForExistingWorktree(task core.Task, wt core.WorktreeInfo, worktr
 		}
 	}
 
-	// Determine base branch from the worktree's branch name
-	// Branch is "autom8/{worktree-name}", base branch depends on whether task has dependency
-	var baseBranch string
-	if task.DependsOn != "" {
-		// For dependent tasks, extract parent suffix from worktree name
-		// Worktree name format: {task-id}-{parent-instance}-{instance}
-		// We need the base branch: autom8/{parent-task-id}-{parent-instance}
-		suffix := strings.TrimPrefix(worktreeName, task.ID)
-		parts := strings.Split(suffix, "-")
-		if len(parts) >= 3 {
-			// Format: -{parent-instance}-{instance}, we want -{parent-instance}
-			parentSuffix := "-" + parts[1]
-			baseBranch = fmt.Sprintf("autom8/%s%s", task.DependsOn, parentSuffix)
-		} else {
-			baseBranch = "main"
-		}
-	} else {
-		baseBranch = "main"
-	}
+	// Get base branch from upstream (set when worktree was created)
+	upstreamCmd := exec.Command("git", "-C", worktreePath, "rev-parse", "--abbrev-ref", "@{u}")
+	upstreamOut, _ := upstreamCmd.Output()
+	baseBranch := strings.TrimSpace(string(upstreamOut))
 
 	// Create/ensure logs directory
 	logsDir := filepath.Join(autom8Path, "logs", worktreeName)

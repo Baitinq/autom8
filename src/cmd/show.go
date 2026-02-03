@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/baitinq/autom8/src/core"
 	"github.com/spf13/cobra"
@@ -13,8 +14,8 @@ import (
 var ShowCmd = &cobra.Command{
 	Use:     "show <worktree-name>",
 	Aliases: []string{"diff"},
-	Short:   "Show the diff between main and a worktree (PR-style)",
-	Long: `Display the changes in a worktree compared to the main branch.
+	Short:   "Show the diff for a worktree (PR-style)",
+	Long: `Display the changes in a worktree compared to where it branched from.
 
 This shows the diff in a PR-style format, making it easy to review what
 changes an implementation has made.`,
@@ -42,16 +43,21 @@ func runShow(cmd *cobra.Command, args []string) error {
 	pids, _ := core.LoadPids()
 	info := core.GetWorktreeInfo(worktreesDir, worktreeName, pids)
 
+	// Get the upstream branch name for display
+	upstreamCmd := exec.Command("git", "-C", worktreePath, "rev-parse", "--abbrev-ref", "@{u}")
+	upstreamOut, _ := upstreamCmd.Output()
+	upstream := strings.TrimSpace(string(upstreamOut))
+
 	// Print header info directly to stdout
-	fmt.Println(TitleStyle.Render(fmt.Sprintf("Diff: main...%s", info.Branch)))
+	fmt.Println(TitleStyle.Render(fmt.Sprintf("Diff: %s...%s", upstream, info.Branch)))
 	fmt.Println()
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Worktree:"), HighlightStyle.Render(worktreeName))
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Branch:"), HighlightStyle.Render(info.Branch))
-	fmt.Printf("  %s %s commit(s) ahead of main\n", SubtitleStyle.Render("Commits:"), info.CommitsAhead)
+	fmt.Printf("  %s %s commit(s) ahead of %s\n", SubtitleStyle.Render("Commits:"), info.CommitsAhead, upstream)
 	fmt.Println()
 
-	// Get the diff between main and the worktree branch
-	diffCmd := exec.Command("git", "-C", worktreePath, "diff", "--color=always", "main...HEAD", "--stat")
+	// Get the diff between upstream and the worktree branch
+	diffCmd := exec.Command("git", "-C", worktreePath, "diff", "--color=always", "@{u}...HEAD", "--stat")
 	statOutput, _ := diffCmd.Output()
 
 	if len(statOutput) > 0 {
@@ -60,14 +66,14 @@ func runShow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the full diff
-	fullDiffCmd := exec.Command("git", "-C", worktreePath, "diff", "--color=always", "main...HEAD")
+	fullDiffCmd := exec.Command("git", "-C", worktreePath, "diff", "--color=always", "@{u}...HEAD")
 	fullDiffOutput, err := fullDiffCmd.Output()
 	if err != nil {
 		return fmt.Errorf("error getting diff: %w", err)
 	}
 
 	if len(fullDiffOutput) == 0 {
-		fmt.Println(SubtitleStyle.Render("No changes from main."))
+		fmt.Println(SubtitleStyle.Render(fmt.Sprintf("No changes from %s.", upstream)))
 		return nil
 	}
 

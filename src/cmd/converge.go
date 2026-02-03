@@ -223,13 +223,13 @@ func buildConvergePrompt(task core.Task, worktrees []core.WorktreeInfo, gitRoot 
 	for _, wt := range worktrees {
 		sb.WriteString(fmt.Sprintf("### Worktree: %s\n\n", wt.Name))
 
-		// Get the diff for this worktree
-		diffCmd := exec.Command("git", "-C", wt.Path, "diff", "main...HEAD")
+		// Get the diff for this worktree (against its upstream)
+		diffCmd := exec.Command("git", "-C", wt.Path, "diff", "@{u}...HEAD")
 		diffOutput, err := diffCmd.Output()
 		if err != nil {
 			sb.WriteString("(could not get diff)\n\n")
 		} else if len(diffOutput) == 0 {
-			sb.WriteString("(no changes from main)\n\n")
+			sb.WriteString("(no changes)\n\n")
 		} else {
 			// Truncate very large diffs
 			diff := string(diffOutput)
