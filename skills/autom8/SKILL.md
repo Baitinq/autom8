@@ -125,13 +125,13 @@ autom8 logs <worktree>
 
 ## Creating Pull Requests
 
-When a task has a winning worktree (after `autom8 converge`), create a draft PR with:
+Create a draft PR for any worktree:
 
 ```bash
-autom8 pr [task-id]
+autom8 pr <worktree>
 ```
 
-If you're already inside the winning worktree, you can omit the task ID. This uses `gh pr create --draft`, so the GitHub CLI must be installed and authenticated.
+This uses `gh pr create --draft`, so the GitHub CLI must be installed and authenticated.
 
 ## Cleanup
 

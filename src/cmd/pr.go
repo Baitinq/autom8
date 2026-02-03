@@ -12,21 +12,17 @@ import (
 )
 
 var PrCmd = &cobra.Command{
-	Use:   "pr [task-id]",
-	Short: "Create a GitHub pull request for a task's winning worktree",
-	Long: `Create a GitHub pull request for the winning implementation of a task.
+	Use:   "pr <worktree>",
+	Short: "Create a GitHub pull request for a worktree",
+	Long: `Create a GitHub pull request for a worktree's implementation.
 
 This command requires:
-  - The task must have a winner set (from converge)
   - The 'gh' CLI must be installed and authenticated
 
-If no task ID is provided and you're in a worktree, it will use that worktree's task.
-
 The PR is created as a draft using 'gh pr create --draft'.`,
-	Example: `  autom8 pr my-task
-  autom8 pr           # Uses current worktree's task if applicable`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runPr,
+	Example: `  autom8 pr my-task-1`,
+	Args:    cobra.ExactArgs(1),
+	RunE:    runPr,
 }
 
 func runPr(cmd *cobra.Command, args []string) error {
@@ -35,21 +31,24 @@ func runPr(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("'gh' CLI is not installed or not in PATH\nInstall it from: https://cli.github.com/")
 	}
 
-	// Load tasks
+	worktreeName := args[0]
+
+	// Load tasks for reverse lookup
 	tasks, err := core.LoadTasks()
 	if err != nil {
 		return fmt.Errorf("error loading tasks: %w", err)
 	}
 
-	var taskID string
-	if len(args) > 0 {
-		taskID = args[0]
-	} else {
-		// Try to detect task from current directory (if in a worktree)
-		taskID, err = detectTaskFromWorktree(tasks)
-		if err != nil {
-			return fmt.Errorf("no task ID provided and could not detect from current directory\nUsage: autom8 pr <task-id>")
-		}
+	// Build task ID map
+	taskIDs := make(map[string]struct{}, len(tasks))
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
+	}
+
+	// Reverse-lookup task from worktree name
+	taskID, ok := core.TaskIDFromWorktree(worktreeName, taskIDs)
+	if !ok {
+		return fmt.Errorf("could not determine task from worktree '%s'", worktreeName)
 	}
 
 	// Find the task
@@ -59,37 +58,32 @@ func runPr(cmd *cobra.Command, args []string) error {
 	}
 	task := tasks[taskIndex]
 
-	// Check if task has a winner
-	if task.Winner == "" {
-		return fmt.Errorf("task '%s' has no winner set\nRun 'autom8 converge' to select a winning implementation first", taskID)
-	}
-
 	// Get worktree path
 	worktreesDir, err := core.GetWorktreesDir()
 	if err != nil {
 		return fmt.Errorf("error getting worktrees dir: %w", err)
 	}
 
-	worktreePath := filepath.Join(worktreesDir, task.Winner)
+	worktreePath := filepath.Join(worktreesDir, worktreeName)
 
 	// Check if worktree exists
 	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
-		return fmt.Errorf("winning worktree '%s' not found\nIt may have been cleaned up. Run 'autom8 status' to check", task.Winner)
+		return fmt.Errorf("worktree '%s' not found", worktreeName)
 	}
 
 	// Get worktree info for display
 	pids, _ := core.LoadPids()
-	info := core.GetWorktreeInfo(worktreesDir, task.Winner, pids)
+	info := core.GetWorktreeInfo(worktreesDir, worktreeName, pids)
 
 	// Build prompts for Claude to create a PR
-	systemPrompt := buildPrSystemPrompt(&task, task.Winner, info.Branch)
+	systemPrompt := buildPrSystemPrompt(&task, worktreeName, info.Branch)
 	userPrompt := "Create the draft PR now using `gh pr create --draft`, following the system instructions."
 
 	// Display info before starting
 	fmt.Println(TitleStyle.Render("Create Pull Request"))
 	fmt.Println()
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Task:"), IDStyle.Render(taskID))
-	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Winner:"), HighlightStyle.Render(task.Winner))
+	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Worktree:"), HighlightStyle.Render(worktreeName))
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Branch:"), HighlightStyle.Render(info.Branch))
 	fmt.Println()
 	fmt.Println(SubtitleStyle.Render("Starting Claude session to create PR..."))
@@ -111,47 +105,6 @@ func runPr(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println(SuccessStyle.Render("PR creation session completed."))
 	return nil
-}
-
-func detectTaskFromWorktree(tasks []core.Task) (string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	// Check if we're in a worktree directory
-	worktreesDir, err := core.GetWorktreesDir()
-	if err != nil {
-		return "", err
-	}
-
-	// See if cwd is inside worktreesDir
-	if !strings.HasPrefix(cwd, worktreesDir) {
-		return "", fmt.Errorf("not in a worktree")
-	}
-
-	// Extract worktree name from path
-	rel, err := filepath.Rel(worktreesDir, cwd)
-	if err != nil {
-		return "", err
-	}
-
-	// Get the first component (worktree name)
-	worktreeName := strings.Split(rel, string(filepath.Separator))[0]
-
-	// Build task ID map
-	taskIDs := make(map[string]struct{}, len(tasks))
-	for _, t := range tasks {
-		taskIDs[t.ID] = struct{}{}
-	}
-
-	// Get task ID from worktree name
-	taskID, ok := core.TaskIDFromWorktree(worktreeName, taskIDs)
-	if !ok {
-		return "", fmt.Errorf("could not determine task from worktree")
-	}
-
-	return taskID, nil
 }
 
 func buildPrSystemPrompt(task *core.Task, worktreeName, branchName string) string {

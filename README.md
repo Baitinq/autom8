@@ -93,11 +93,8 @@ Converge outputs the winning worktree plus a short 1-2 sentence reasoning summar
 ### Create a draft PR
 
 ```bash
-# Create a draft PR for a specific task's winning worktree
-autom8 pr my-task
-
-# From inside a winning worktree, omit the task ID
-autom8 pr
+# Create a draft PR for a worktree
+autom8 pr my-task-1
 ```
 
 The PR is created as a draft via `gh pr create --draft` using the task prompt and verification criteria.

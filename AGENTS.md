@@ -107,7 +107,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | `autom8 status` | Display all tasks with status (alias: `list`, `ls`) |
 | `autom8 implement -n N` | Run N parallel agents per task; use `--resume` to restart error worktrees |
 | `autom8 converge` | Use AI to pick best implementation from multiple worktrees, with a short reasoning summary |
-| `autom8 pr [task-id]` | Create a draft PR for a task's winning worktree (defaults to current worktree's task) |
+| `autom8 pr <worktree>` | Create a draft PR for a worktree |
 | `autom8 accept <worktree>` | Merge a worktree branch and clean up |
 | `autom8 inspect <worktree>` | Open a shell in a worktree directory |
 | `autom8 describe <task-id>` | Show detailed task information |
@@ -144,7 +144,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
   - Output includes the winning worktree and a 1-2 sentence reasoning summary
 
 **`autom8 pr`**:
-- `autom8 pr [task-id]` - Create a draft PR for the winning worktree (defaults to current worktree's task)
+- `autom8 pr <worktree>` - Create a draft PR for the specified worktree
 
 ## Code Organization
 
