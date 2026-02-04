@@ -101,8 +101,21 @@ func runAccept(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("could not determine merge base for branch '%s'", branchName)
 	}
 
-	firstCommitCmd := exec.Command("git", "-C", gitRoot, "log", "--reverse", "--format=%B", "-n", "1", fmt.Sprintf("%s..%s", mergeBase, branchName))
-	firstCommitOutput, err := firstCommitCmd.Output()
+	// Get list of commits in chronological order (oldest first)
+	revListCmd := exec.Command("git", "-C", gitRoot, "rev-list", "--reverse", fmt.Sprintf("%s..%s", mergeBase, branchName))
+	revListOutput, err := revListCmd.Output()
+	if err != nil {
+		return fmt.Errorf("error getting commit list: %w", err)
+	}
+	commits := strings.Split(strings.TrimSpace(string(revListOutput)), "\n")
+	if len(commits) == 0 || commits[0] == "" {
+		return fmt.Errorf("no commits found on branch '%s'", branchName)
+	}
+	firstCommitHash := commits[0]
+
+	// Get the first commit's message
+	msgCmd := exec.Command("git", "-C", gitRoot, "log", "-1", "--format=%B", firstCommitHash)
+	firstCommitOutput, err := msgCmd.Output()
 	if err != nil {
 		return fmt.Errorf("error getting first commit message: %w", err)
 	}
