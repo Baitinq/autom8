@@ -31,7 +31,6 @@ func init() {
 	rootCmd.AddCommand(cmd.DescribeCmd)
 	rootCmd.AddCommand(cmd.EditCmd)
 	rootCmd.AddCommand(cmd.PruneCmd)
-	rootCmd.AddCommand(cmd.ConvergeCmd)
 	rootCmd.AddCommand(cmd.ShowCmd)
 	rootCmd.AddCommand(cmd.ChatCmd)
 	rootCmd.AddCommand(cmd.WorkerCmd)

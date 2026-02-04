@@ -3,16 +3,11 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/baitinq/autom8/src/core"
-	"github.com/spf13/cobra"
 )
-
-var mergeFlag bool
 
 // ConvergeResult holds the result of a convergence operation.
 type ConvergeResult struct {
@@ -21,194 +16,45 @@ type ConvergeResult struct {
 	Error     error
 }
 
-var ConvergeCmd = &cobra.Command{
-	Use:   "converge [task-name]",
-	Short: "Use AI to pick the best implementation from multiple worktrees",
-	Long: `Analyze all worktrees for a task and determine which implementation is best.
+// ConvergeTask runs convergence analysis on a task's worktrees and returns the result.
+// This is the core convergence logic used by auto-converge.
+// For single worktree, it returns that worktree as the trivial winner.
+func ConvergeTask(task core.Task, worktrees []core.WorktreeInfo, gitRoot string) ConvergeResult {
+	if len(worktrees) == 0 {
+		return ConvergeResult{Error: fmt.Errorf("no worktrees to converge")}
+	}
 
-An AI agent will inspect the diffs and code from each worktree, comparing them
-against the original task prompt and verification criteria to pick a winner.
+	// Single worktree: trivially pick it as the winner
+	if len(worktrees) == 1 {
+		return ConvergeResult{
+			Winner:    worktrees[0].Name,
+			Reasoning: "Single worktree, automatically selected",
+		}
+	}
 
-If no task name is provided, all tasks with multiple worktrees will be evaluated.`,
-	Example: `  # Converge all tasks with multiple worktrees
-  autom8 converge
+	// Build the converge prompt
+	convergePrompt := buildConvergePrompt(task, worktrees, gitRoot)
 
-  # Converge a specific task
-  autom8 converge my-task
+	// Run claude to analyze (use stdin to avoid "argument list too long" error)
+	claudeCmd := exec.Command("claude", "-p", "-", "--output-format", "json")
+	claudeCmd.Dir = gitRoot
+	claudeCmd.Stdin = strings.NewReader(convergePrompt)
 
-  # Converge and auto-merge the winner
-  autom8 converge --merge
-  autom8 converge my-task --merge`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runConverge,
-}
-
-func init() {
-	ConvergeCmd.Flags().BoolVarP(&mergeFlag, "merge", "m", false, "Auto-merge the winning implementation")
-}
-
-func runConverge(cmd *cobra.Command, args []string) error {
-	gitRoot, err := core.GetGitRoot()
+	output, err := claudeCmd.Output()
 	if err != nil {
-		return err
+		return ConvergeResult{Error: fmt.Errorf("failed to run AI analysis: %w", err)}
 	}
 
-	tasks, err := core.LoadTasks()
-	if err != nil {
-		return fmt.Errorf("error loading tasks: %w", err)
+	// Parse the response to extract the winner and reasoning
+	winner, reasoning := parseConvergeResponse(string(output), worktrees)
+	if winner == "" {
+		return ConvergeResult{Error: fmt.Errorf("could not determine a winner from AI response")}
 	}
 
-	if len(tasks) == 0 {
-		fmt.Println(SubtitleStyle.Render("No tasks found."))
-		return nil
+	return ConvergeResult{
+		Winner:    winner,
+		Reasoning: reasoning,
 	}
-
-	// Check if a specific task ID was provided
-	var targetTaskID string
-	if len(args) > 0 {
-		targetTaskID = args[0]
-	}
-
-	// Build task ID set for worktree matching
-	taskIDs := make(map[string]struct{})
-	for _, t := range tasks {
-		taskIDs[t.ID] = struct{}{}
-	}
-
-	// Get worktrees directory
-	worktreesDir, err := core.GetWorktreesDir()
-	if err != nil {
-		return err
-	}
-	autom8Path, err := core.GetAutom8Dir()
-	if err != nil {
-		return err
-	}
-	pids, _ := core.LoadPids()
-
-	// Build map of task ID -> worktrees
-	worktreesByTask := core.ListWorktreesByTask(worktreesDir, taskIDs, pids)
-
-	// Filter tasks to converge
-	var tasksToConverge []core.Task
-	for _, task := range tasks {
-		if targetTaskID != "" {
-			if task.ID == targetTaskID {
-				tasksToConverge = append(tasksToConverge, task)
-				break
-			}
-		} else {
-			// Only converge tasks with multiple worktrees
-			if len(worktreesByTask[task.ID]) > 1 {
-				tasksToConverge = append(tasksToConverge, task)
-			}
-		}
-	}
-
-	if targetTaskID != "" && len(tasksToConverge) == 0 {
-		return fmt.Errorf("task '%s' not found", targetTaskID)
-	}
-
-	if len(tasksToConverge) == 0 {
-		fmt.Println(SubtitleStyle.Render("No tasks with multiple worktrees to converge."))
-		return nil
-	}
-
-	fmt.Println(TitleStyle.Render("Converging Implementations"))
-	fmt.Println()
-
-	// Process each task
-	for _, task := range tasksToConverge {
-		worktrees := worktreesByTask[task.ID]
-
-		if len(worktrees) == 0 {
-			fmt.Printf("  %s %s (no worktrees)\n", SubtitleStyle.Render("[skip]"), task.ID)
-			continue
-		}
-
-		if len(worktrees) == 1 {
-			fmt.Printf("  %s %s (only one worktree, nothing to compare)\n", SubtitleStyle.Render("[skip]"), task.ID)
-			continue
-		}
-
-		// Check if any worktrees are still running
-		anyRunning := false
-		for _, wt := range worktrees {
-			if wt.IsRunning {
-				anyRunning = true
-				break
-			}
-		}
-		if anyRunning {
-			fmt.Printf("  %s %s (agents still running)\n", StatusInProgressStyle.Render("[wait]"), task.ID)
-			continue
-		}
-
-		fmt.Printf("  %s %s\n", HighlightStyle.Render("[analyzing]"), core.Truncate(task.Prompt, 50))
-		fmt.Printf("    %s %s\n", SubtitleStyle.Render("ID:"), NameStyle.Render(task.ID))
-		fmt.Printf("    %s %d worktrees\n", SubtitleStyle.Render("Comparing:"), len(worktrees))
-
-		// Build the converge prompt
-		convergePrompt := buildConvergePrompt(task, worktrees, gitRoot)
-
-		// Run claude to analyze (use stdin to avoid "argument list too long" error)
-		claudeCmd := exec.Command("claude", "-p", "-", "--output-format", "json")
-		claudeCmd.Dir = gitRoot
-		claudeCmd.Stdin = strings.NewReader(convergePrompt)
-
-		output, err := claudeCmd.Output()
-		if err != nil {
-			fmt.Printf("    %s failed to run AI analysis: %v\n", ErrorStyle.Render("[error]"), err)
-			continue
-		}
-
-		// Parse the response to extract the winner and reasoning
-		winner, reasoning := parseConvergeResponse(string(output), worktrees)
-		if winner == "" {
-			fmt.Printf("    %s could not determine a winner\n", ErrorStyle.Render("[error]"))
-			// Print the raw output for debugging
-			fmt.Printf("    %s\n", SubtitleStyle.Render("AI response:"))
-			fmt.Printf("    %s\n", string(output))
-			continue
-		}
-
-		fmt.Printf("    %s %s\n", SuccessStyle.Render("[winner]"), NameStyle.Render(winner))
-		if reasoning != "" {
-			fmt.Printf("    %s %s\n", SubtitleStyle.Render("[reason]"), reasoning)
-		}
-
-		// Update task with winner
-		for i, t := range tasks {
-			if t.ID == task.ID {
-				tasks[i].Winner = winner
-				break
-			}
-		}
-
-		// Auto-merge if flag is set
-		if mergeFlag {
-			fmt.Printf("    %s\n", SubtitleStyle.Render("Auto-merging winner..."))
-			// Simulate calling accept
-			if err := doAccept(winner, gitRoot, autom8Path, tasks); err != nil {
-				fmt.Printf("    %s merge failed: %v\n", ErrorStyle.Render("[error]"), err)
-			} else {
-				fmt.Printf("    %s merged successfully\n", SuccessStyle.Render("[merged]"))
-			}
-		}
-
-		fmt.Println()
-	}
-
-	// Save tasks with winner info
-	if err := core.SaveTasks(tasks); err != nil {
-		return fmt.Errorf("error saving tasks: %w", err)
-	}
-
-	fmt.Println(SuccessStyle.Render("Convergence complete!"))
-	if !mergeFlag {
-		fmt.Println(SubtitleStyle.Render("Use 'autom8 accept <worktree>' to merge the winner, or 'autom8 converge --merge' to auto-merge."))
-	}
-	return nil
 }
 
 func buildConvergePrompt(task core.Task, worktrees []core.WorktreeInfo, gitRoot string) string {
@@ -305,126 +151,4 @@ func parseConvergeResponse(response string, worktrees []core.WorktreeInfo) (stri
 	}
 
 	return winner, reasoning
-}
-
-// ConvergeTask runs convergence analysis on a task's worktrees and returns the result.
-// This is the core convergence logic used by both the CLI command and auto-converge.
-// For single worktree, it returns that worktree as the trivial winner.
-func ConvergeTask(task core.Task, worktrees []core.WorktreeInfo, gitRoot string) ConvergeResult {
-	if len(worktrees) == 0 {
-		return ConvergeResult{Error: fmt.Errorf("no worktrees to converge")}
-	}
-
-	// Single worktree: trivially pick it as the winner
-	if len(worktrees) == 1 {
-		return ConvergeResult{
-			Winner:    worktrees[0].Name,
-			Reasoning: "Single worktree, automatically selected",
-		}
-	}
-
-	// Build the converge prompt
-	convergePrompt := buildConvergePrompt(task, worktrees, gitRoot)
-
-	// Run claude to analyze (use stdin to avoid "argument list too long" error)
-	claudeCmd := exec.Command("claude", "-p", "-", "--output-format", "json")
-	claudeCmd.Dir = gitRoot
-	claudeCmd.Stdin = strings.NewReader(convergePrompt)
-
-	output, err := claudeCmd.Output()
-	if err != nil {
-		return ConvergeResult{Error: fmt.Errorf("failed to run AI analysis: %w", err)}
-	}
-
-	// Parse the response to extract the winner and reasoning
-	winner, reasoning := parseConvergeResponse(string(output), worktrees)
-	if winner == "" {
-		return ConvergeResult{Error: fmt.Errorf("could not determine a winner from AI response")}
-	}
-
-	return ConvergeResult{
-		Winner:    winner,
-		Reasoning: reasoning,
-	}
-}
-
-func doAccept(worktreeName, gitRoot, autom8Path string, tasks []core.Task) error {
-	worktreesDir, _ := core.GetWorktreesDir()
-	worktreePath := filepath.Join(worktreesDir, worktreeName)
-
-	// Check if worktree exists
-	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
-		return fmt.Errorf("worktree '%s' not found", worktreeName)
-	}
-
-	// Get the branch name from the worktree
-	branchCmd := exec.Command("git", "-C", worktreePath, "branch", "--show-current")
-	branchOutput, err := branchCmd.Output()
-	if err != nil {
-		return fmt.Errorf("error getting branch name: %w", err)
-	}
-	branchName := strings.TrimSpace(string(branchOutput))
-
-	if branchName == "" {
-		return fmt.Errorf("could not determine branch name for worktree")
-	}
-
-	// Check for uncommitted changes in the worktree
-	statusCmd := exec.Command("git", "-C", worktreePath, "status", "--porcelain")
-	statusOutput, err := statusCmd.Output()
-	if err != nil {
-		return fmt.Errorf("error checking worktree status: %w", err)
-	}
-
-	if len(strings.TrimSpace(string(statusOutput))) > 0 {
-		// Stage all changes
-		addCmd := exec.Command("git", "-C", worktreePath, "add", "-A")
-		if _, err := addCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("error staging changes: %w", err)
-		}
-
-		// Commit with auto-commit message
-		commitCmd := exec.Command("git", "-C", worktreePath, "commit", "-m", "autom8: auto-commit uncommitted changes")
-		if _, err := commitCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("error committing changes: %w", err)
-		}
-	}
-
-	// Merge the branch into the current branch
-	mergeCmd := exec.Command("git", "-C", gitRoot, "merge", branchName, "-m", fmt.Sprintf("Merge %s (autom8 converge)", branchName))
-	if output, err := mergeCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("error merging branch: %w\n%s", err, string(output))
-	}
-
-	// Remove the worktree
-	removeCmd := exec.Command("git", "-C", gitRoot, "worktree", "remove", worktreePath)
-	if _, err := removeCmd.CombinedOutput(); err != nil {
-		// Non-fatal, continue
-	}
-
-	// Delete the branch
-	deleteBranchCmd := exec.Command("git", "-C", gitRoot, "branch", "-d", branchName)
-	deleteBranchCmd.Run()
-
-	// Mark the task as completed
-	// Build task ID set for worktree name matching
-	taskIDs := make(map[string]struct{})
-	for _, t := range tasks {
-		taskIDs[t.ID] = struct{}{}
-	}
-
-	// Extract task ID from worktree name using proper matching
-	taskID, ok := core.TaskIDFromWorktree(worktreeName, taskIDs)
-	if !ok {
-		return nil
-	}
-
-	for i, t := range tasks {
-		if t.ID == taskID {
-			tasks[i].Status = core.TaskStatusCompleted
-			break
-		}
-	}
-
-	return nil
 }
