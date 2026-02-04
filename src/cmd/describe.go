@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/baitinq/autom8/src/core"
@@ -128,6 +130,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Worktrees
+	var readyWorktrees []core.WorktreeInfo
 	if len(worktrees) > 0 {
 		fmt.Println(SubtitleStyle.Render("  Worktrees:"))
 		for _, wt := range worktrees {
@@ -145,6 +148,7 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 				wtStatus = StatusInProgressStyle.Render("[running]")
 			} else if wt.Phase == core.WorktreePhaseReady {
 				wtStatus = StatusReadyStyle.Render("[ready]")
+				readyWorktrees = append(readyWorktrees, wt)
 			} else if wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing {
 				// Non-running worktree with implementing/reviewing phase = error (worker died while working)
 				wtStatus = StatusErrorStyle.Render("[error]")
@@ -164,6 +168,107 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		fmt.Println("    (none - run 'autom8 implement' to start)")
 	}
 
+	// Show comparison if multiple ready worktrees exist
+	if len(readyWorktrees) > 1 {
+		fmt.Println()
+		fmt.Println(SubtitleStyle.Render("  Implementation Comparison:"))
+		comparison := compareWorktrees(task, readyWorktrees)
+		if comparison != "" {
+			for _, line := range strings.Split(comparison, "\n") {
+				fmt.Printf("    %s\n", line)
+			}
+		} else {
+			fmt.Println("    (could not generate comparison)")
+		}
+	}
+
 	fmt.Println()
 	return nil
+}
+
+// compareWorktrees uses Claude AI to analyze and compare multiple worktree implementations.
+func compareWorktrees(task core.Task, worktrees []core.WorktreeInfo) string {
+	prompt := buildComparePrompt(task, worktrees)
+
+	claudeCmd := exec.Command("claude", "-p", "-", "--output-format", "json")
+	claudeCmd.Stdin = strings.NewReader(prompt)
+
+	output, err := claudeCmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	return parseCompareResponse(string(output))
+}
+
+func buildComparePrompt(task core.Task, worktrees []core.WorktreeInfo) string {
+	var sb strings.Builder
+
+	sb.WriteString("Compare these implementations of the same task and summarize the key differences.\n\n")
+
+	sb.WriteString("## Task\n\n")
+	sb.WriteString(task.Prompt)
+	sb.WriteString("\n\n")
+
+	if len(task.VerificationCriteria) > 0 {
+		sb.WriteString("## Verification Criteria\n\n")
+		for _, c := range task.VerificationCriteria {
+			sb.WriteString(fmt.Sprintf("- %s\n", c))
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("## Implementations\n\n")
+
+	for _, wt := range worktrees {
+		sb.WriteString(fmt.Sprintf("### %s\n\n", wt.Name))
+
+		diffCmd := exec.Command("git", "-C", wt.Path, "diff", "@{u}...HEAD")
+		diffOutput, err := diffCmd.Output()
+		if err != nil || len(diffOutput) == 0 {
+			sb.WriteString("(no changes)\n\n")
+			continue
+		}
+
+		diff := string(diffOutput)
+		if len(diff) > 30000 {
+			diff = diff[:30000] + "\n... (truncated)"
+		}
+		sb.WriteString("```diff\n")
+		sb.WriteString(diff)
+		sb.WriteString("\n```\n\n")
+	}
+
+	sb.WriteString("## Your Task\n\n")
+	sb.WriteString("Provide a BRIEF comparison (2-3 sentences per implementation) highlighting:\n")
+	sb.WriteString("- Key differences in approach\n")
+	sb.WriteString("- Trade-offs between implementations\n\n")
+	sb.WriteString("Format your response with a short summary for each worktree:\n")
+	sb.WriteString("<output>COMPARISON:\n")
+	for _, wt := range worktrees {
+		sb.WriteString(fmt.Sprintf("- %s: [2-3 sentence summary]\n", wt.Name))
+	}
+	sb.WriteString("</output>\n")
+
+	return sb.String()
+}
+
+func parseCompareResponse(response string) string {
+	// Parse JSON response
+	var jsonResp struct {
+		Result string `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(response), &jsonResp); err == nil {
+		response = jsonResp.Result
+	}
+
+	// Look for "<output>COMPARISON:" pattern
+	if start := strings.Index(response, "<output>COMPARISON:"); start != -1 {
+		start += len("<output>COMPARISON:")
+		if end := strings.Index(response[start:], "</output>"); end != -1 {
+			return strings.TrimSpace(response[start : start+end])
+		}
+	}
+
+	return ""
 }
