@@ -50,6 +50,20 @@ go run ${CLAUDE_PLUGIN_ROOT}/src <command> [flags]
 
 Check which to use by running `which autom8` first. Use the binary if available (faster), otherwise fall back to `go run`.
 
+## Configuration
+
+Users can optionally create `.autom8/config.json` to choose implementer/reviewer tools and models. Defaults are `claude` for both.
+
+Example:
+```json
+{
+  "implementer": { "tool": "claude", "model": "sonnet" },
+  "reviewer": { "tool": "codex", "model": "gpt-4o" }
+}
+```
+
+Supported tools: `claude`, `codex`, `opencode`.
+
 ## When Ready
 
 Once you've discussed the feature enough and the user confirms they're ready to create the task, run `new` with the appropriate flags:

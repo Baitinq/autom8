@@ -77,6 +77,12 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	// Ensure PID file is removed on exit (success or failure)
 	defer os.Remove(pidFile)
 
+	// Load configuration
+	cfg, err := core.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("error loading config: %w", err)
+	}
+
 	// Load the task
 	tasks, err := core.LoadTasks()
 	if err != nil {
@@ -88,7 +94,6 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("task not found: %s", workerTaskID)
 	}
 	task := tasks[taskIndex]
-
 
 	// Load the implementer agent template
 	agentTemplate, err := loadAgentTemplate("implementer")
@@ -130,17 +135,17 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		// Create log file for this iteration
 		logFile := filepath.Join(logsDir, fmt.Sprintf("iteration-%d.log", iteration))
 
-		// Run claude with PTY for real-time streaming
-		// PTY + --output-format stream-json + --include-partial-messages enables incremental output
-		claudeCmd := exec.Command("claude",
-			"-p", prompt,
-			"--output-format", "stream-json",
-			"--verbose",
-			"--include-partial-messages",
-			"--dangerously-skip-permissions")
-		claudeCmd.Dir = workerWorktreePath
+		// Run implementer tool; use PTY streaming for Claude to handle stream-json output.
+		implTool := normalizeTool(cfg.Implementer.Tool)
+		implCmd := buildImplementerCommand(cfg.Implementer, prompt, workerWorktreePath)
 
-		output, err := runCommandWithPTYStreaming(claudeCmd, logFile)
+		var output []byte
+		var err error
+		if implTool == "claude" {
+			output, err = runCommandWithPTYStreaming(implCmd, logFile)
+		} else {
+			output, err = runCommandWithStreaming(implCmd, logFile)
+		}
 		if err != nil {
 			return fmt.Errorf("implementation iteration %d failed: %w", iteration, err)
 		}
@@ -148,7 +153,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		// Check if output contains TASK COMPLETE signal
 		if strings.Contains(string(output), "<output>TASK COMPLETE</output>") {
 			// Implementation complete - now start the review loop
-			reviewErr := runWorkerReviewLoop(task, workerWorktreePath, logsDir, workerBaseBranch)
+			reviewErr := runWorkerReviewLoop(task, workerWorktreePath, logsDir, workerBaseBranch, cfg.Reviewer)
 			if reviewErr != nil {
 				return fmt.Errorf("review failed: %w", reviewErr)
 			}
@@ -168,9 +173,99 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 }
 
+func normalizeTool(tool string) string {
+	tool = strings.TrimSpace(strings.ToLower(tool))
+	switch tool {
+	case "claude", "codex", "opencode":
+		return tool
+	default:
+		return "claude"
+	}
+}
+
+// buildImplementerCommand creates the command to run the implementer tool.
+func buildImplementerCommand(cfg core.ToolConfig, prompt, worktreePath string) *exec.Cmd {
+	var cmd *exec.Cmd
+
+	switch normalizeTool(cfg.Tool) {
+	case "codex":
+		args := []string{"exec", "--dangerously-bypass-approvals-and-sandbox"}
+		if cfg.Model != "" {
+			args = append(args, "--model", cfg.Model)
+		}
+		args = append(args, "-")
+		cmd = exec.Command("codex", args...)
+		cmd.Stdin = strings.NewReader(prompt)
+	case "opencode":
+		args := []string{"--yes", "--prompt", prompt}
+		if cfg.Model != "" {
+			args = append(args, "--model", cfg.Model)
+		}
+		cmd = exec.Command("opencode", args...)
+	default: // "claude" or any other value defaults to claude
+		args := []string{
+			"-p", prompt,
+			"--output-format", "stream-json",
+			"--verbose",
+			"--include-partial-messages",
+			"--dangerously-skip-permissions",
+		}
+		if cfg.Model != "" {
+			args = append(args, "--model", cfg.Model)
+		}
+		cmd = exec.Command("claude", args...)
+	}
+
+	cmd.Dir = worktreePath
+	return cmd
+}
+
+// buildReviewerCommand creates the command to run the reviewer tool.
+func buildReviewerCommand(cfg core.ToolConfig, prompt, worktreePath string) *exec.Cmd {
+	var cmd *exec.Cmd
+
+	switch normalizeTool(cfg.Tool) {
+	case "claude":
+		args := []string{
+			"-p", prompt,
+			"--dangerously-skip-permissions",
+		}
+		if cfg.Model != "" {
+			args = append(args, "--model", cfg.Model)
+		}
+		cmd = exec.Command("claude", args...)
+	case "opencode":
+		args := []string{"--yes", "--prompt", prompt}
+		if cfg.Model != "" {
+			args = append(args, "--model", cfg.Model)
+		}
+		cmd = exec.Command("opencode", args...)
+	case "codex":
+		args := []string{"exec", "--dangerously-bypass-approvals-and-sandbox"}
+		if cfg.Model != "" {
+			args = append(args, "--model", cfg.Model)
+		}
+		args = append(args, "-")
+		cmd = exec.Command("codex", args...)
+		cmd.Stdin = strings.NewReader(prompt)
+	default:
+		args := []string{
+			"-p", prompt,
+			"--dangerously-skip-permissions",
+		}
+		if cfg.Model != "" {
+			args = append(args, "--model", cfg.Model)
+		}
+		cmd = exec.Command("claude", args...)
+	}
+
+	cmd.Dir = worktreePath
+	return cmd
+}
+
 // runWorkerReviewLoop runs the review loop after implementation completes.
 // The reviewer agent will directly apply any fixes it finds.
-func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch string) error {
+func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch string, reviewerCfg core.ToolConfig) error {
 	// Extract worktree name from path for status updates
 	worktreeName := filepath.Base(worktreePath)
 
@@ -196,13 +291,10 @@ func runWorkerReviewLoop(task core.Task, worktreePath, logsDir, baseBranch strin
 			return fmt.Errorf("failed to build review prompt: %w", err)
 		}
 
-		// Run codex exec with the review prompt via stdin to avoid argv length limits
-		// Stream output to file in real-time
-		codexCmd := exec.Command("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-")
-		codexCmd.Dir = worktreePath
-		codexCmd.Stdin = strings.NewReader(reviewPrompt)
+		// Run reviewer tool with the review prompt
+		reviewCmd := buildReviewerCommand(reviewerCfg, reviewPrompt, worktreePath)
 
-		output, err := runCommandWithStreaming(codexCmd, reviewLogFile)
+		output, err := runCommandWithStreaming(reviewCmd, reviewLogFile)
 		if err != nil {
 			return fmt.Errorf("review iteration %d failed: %w", reviewIteration, err)
 		}

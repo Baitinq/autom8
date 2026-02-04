@@ -117,6 +117,26 @@ autom8 prune
 
 Prune removes completed tasks and cleans up their worktrees/logs.
 
+## Configuration
+
+Create `.autom8/config.json` to select the implementer and reviewer tools/models. This file is optional; defaults are `claude` for both.
+
+Example:
+```json
+{
+  "implementer": {
+    "tool": "claude",
+    "model": "sonnet"
+  },
+  "reviewer": {
+    "tool": "codex",
+    "model": "gpt-4o"
+  }
+}
+```
+
+Supported tools: `claude`, `codex`, `opencode`.
+
 ## How it works
 
 1. **Define** - Use `autom8 new` to create tasks with prompts, verification criteria, and dependencies
