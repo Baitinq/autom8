@@ -1,4 +1,3 @@
-1. memory.md
 2. (unrelated) review PR
 4. fully autonomous mode (does converge, auto accept, then next implement). idk if should be integrated in cli or bash script
 5. test task dependencies, how does it wokr with implement etc
@@ -13,20 +12,22 @@
 24. we need some sort of logs or something maybe? to see if its still implementing or what. this is hard
 26. when completing tasks with depends, ti doesnt work
 28. watch command?
-29. converge shoudl have winner reasoning
 30. If you start a task on one computer, it will be in progress but in another computer too as the task.json changes. We should probably have gitignored task progress somehow? idk
 31. better error recovery for loops
 33. auto ocmplete would be awesome
 34. skill that can be installed
 35. maybe we should edit the skill to make it not design the implementation and leave it up to the implementers
-36. logs subcommand
-37. prune should also prune old logs
 38. notify when implementaitons done?
 39. blocking command for agents
 40. implement auto covnerge?
 41. make it easier to gitignore things (maybe we should have a .autom8/internal)
 42. create some github actions? maybe we should do releases/tags so go instlal works
-43. streaming logs dont work
 44. squash uses latest commit message instead of first
 45. change prompts (specially reviewer to value simplicity)
 46. pr command
+47. wait command 
+48. full auto
+49. explain comand?
+1. memory.md doesnt really work - maybe converge should do somethign about this
+2. describe command maybe should also explain differences between worktrees
+3. accept command fixes merge conflicts
