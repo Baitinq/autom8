@@ -14,6 +14,13 @@ import (
 
 var mergeFlag bool
 
+// ConvergeResult holds the result of a convergence operation.
+type ConvergeResult struct {
+	Winner    string
+	Reasoning string
+	Error     error
+}
+
 var ConvergeCmd = &cobra.Command{
 	Use:   "converge [task-name]",
 	Short: "Use AI to pick the best implementation from multiple worktrees",
@@ -298,6 +305,47 @@ func parseConvergeResponse(response string, worktrees []core.WorktreeInfo) (stri
 	}
 
 	return winner, reasoning
+}
+
+// ConvergeTask runs convergence analysis on a task's worktrees and returns the result.
+// This is the core convergence logic used by both the CLI command and auto-converge.
+// For single worktree, it returns that worktree as the trivial winner.
+func ConvergeTask(task core.Task, worktrees []core.WorktreeInfo, gitRoot string) ConvergeResult {
+	if len(worktrees) == 0 {
+		return ConvergeResult{Error: fmt.Errorf("no worktrees to converge")}
+	}
+
+	// Single worktree: trivially pick it as the winner
+	if len(worktrees) == 1 {
+		return ConvergeResult{
+			Winner:    worktrees[0].Name,
+			Reasoning: "Single worktree, automatically selected",
+		}
+	}
+
+	// Build the converge prompt
+	convergePrompt := buildConvergePrompt(task, worktrees, gitRoot)
+
+	// Run claude to analyze (use stdin to avoid "argument list too long" error)
+	claudeCmd := exec.Command("claude", "-p", "-", "--output-format", "json")
+	claudeCmd.Dir = gitRoot
+	claudeCmd.Stdin = strings.NewReader(convergePrompt)
+
+	output, err := claudeCmd.Output()
+	if err != nil {
+		return ConvergeResult{Error: fmt.Errorf("failed to run AI analysis: %w", err)}
+	}
+
+	// Parse the response to extract the winner and reasoning
+	winner, reasoning := parseConvergeResponse(string(output), worktrees)
+	if winner == "" {
+		return ConvergeResult{Error: fmt.Errorf("could not determine a winner from AI response")}
+	}
+
+	return ConvergeResult{
+		Winner:    winner,
+		Reasoning: reasoning,
+	}
 }
 
 func doAccept(worktreeName, gitRoot, autom8Path string, tasks []core.Task) error {

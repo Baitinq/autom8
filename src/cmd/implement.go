@@ -23,10 +23,11 @@ const (
 )
 
 var (
-	numInstances  int
-	maxIterations int
-	addMode       bool
-	resumeMode    bool
+	numInstances   int
+	maxIterations  int
+	addMode        bool
+	resumeMode     bool
+	noConvergeMode bool
 )
 
 var ImplementCmd = &cobra.Command{
@@ -74,6 +75,7 @@ func init() {
 	ImplementCmd.Flags().IntVarP(&maxIterations, "max-iterations", "m", 0, "Maximum iterations per worktree (0 = unlimited)")
 	ImplementCmd.Flags().BoolVar(&addMode, "add", false, "Add more implementations to an existing task (allows in-progress tasks)")
 	ImplementCmd.Flags().BoolVar(&resumeMode, "resume", false, "Restart workers for worktrees in error state")
+	ImplementCmd.Flags().BoolVar(&noConvergeMode, "no-converge", false, "Disable automatic convergence when all worktrees complete")
 }
 
 func loadAgentTemplate(name string) (string, error) {
@@ -470,6 +472,9 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 	if maxIter > 0 {
 		workerArgs = append(workerArgs, "--max-iterations", strconv.Itoa(maxIter))
 	}
+	if noConvergeMode {
+		workerArgs = append(workerArgs, "--no-converge")
+	}
 
 	workerCmd := exec.Command(exePath, workerArgs...)
 
@@ -616,6 +621,9 @@ func spawnWorkerForExistingWorktree(task core.Task, wt core.WorktreeInfo, worktr
 	}
 	if maxIter > 0 {
 		workerArgs = append(workerArgs, "--max-iterations", strconv.Itoa(maxIter))
+	}
+	if noConvergeMode {
+		workerArgs = append(workerArgs, "--no-converge")
 	}
 
 	workerCmd := exec.Command(exePath, workerArgs...)

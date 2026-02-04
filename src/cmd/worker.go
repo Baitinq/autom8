@@ -28,6 +28,7 @@ var (
 	workerBaseBranch   string
 	workerTaskID       string
 	workerMaxIter      int
+	workerNoConverge   bool
 )
 
 // WorkerCmd is a hidden command that runs implementation and review loops for a single worktree.
@@ -44,6 +45,7 @@ func init() {
 	WorkerCmd.Flags().StringVar(&workerBaseBranch, "base-branch", "", "Base branch for review (defaults to repo default)")
 	WorkerCmd.Flags().StringVar(&workerTaskID, "task-id", "", "Task ID being implemented")
 	WorkerCmd.Flags().IntVar(&workerMaxIter, "max-iterations", 0, "Maximum iterations (0 = unlimited)")
+	WorkerCmd.Flags().BoolVar(&workerNoConverge, "no-converge", false, "Disable automatic convergence when all worktrees complete")
 	WorkerCmd.MarkFlagRequired("worktree-path")
 	WorkerCmd.MarkFlagRequired("task-id")
 }
@@ -165,6 +167,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 			}
 			if err := core.WriteWorktreeStatus(worktreeName, status); err != nil {
 				return fmt.Errorf("failed to write worktree status: %w", err)
+			}
+
+			// Try auto-converge if not disabled
+			if !workerNoConverge {
+				tryAutoConverge(workerTaskID, worktreeName, logsDir)
 			}
 			return nil // Success
 		}
@@ -562,4 +569,156 @@ func buildReviewPrompt(task core.Task, worktreePath, baseBranch string) (string,
 	sb.WriteString("```\n")
 
 	return sb.String(), nil
+}
+
+// tryAutoConverge checks if all sibling worktrees for a task are done and triggers convergence.
+// This function handles race conditions via file locking to ensure only one worker runs converge.
+func tryAutoConverge(taskID, worktreeName, logsDir string) {
+	// Open log file for appending converge output
+	logFile := filepath.Join(logsDir, WorkerLogFile)
+	logFd, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return // Can't log, just skip
+	}
+	defer logFd.Close()
+
+	logMsg := func(format string, args ...interface{}) {
+		fmt.Fprintf(logFd, "\n[auto-converge] "+format+"\n", args...)
+	}
+
+	// Get git root and worktrees directory
+	gitRoot, err := core.GetGitRoot()
+	if err != nil {
+		logMsg("error: failed to get git root: %v", err)
+		return
+	}
+
+	worktreesDir, err := core.GetWorktreesDir()
+	if err != nil {
+		logMsg("error: failed to get worktrees dir: %v", err)
+		return
+	}
+
+	// Load tasks to get task IDs for matching
+	tasks, err := core.LoadTasks()
+	if err != nil {
+		logMsg("error: failed to load tasks: %v", err)
+		return
+	}
+
+	taskIDs := make(map[string]struct{})
+	for _, t := range tasks {
+		taskIDs[t.ID] = struct{}{}
+	}
+
+	// Find the task
+	taskIndex := core.FindTaskIndex(tasks, taskID)
+	if taskIndex == -1 {
+		logMsg("error: task not found: %s", taskID)
+		return
+	}
+	task := tasks[taskIndex]
+
+	// Get all worktrees for this task
+	pids, _ := core.LoadPids()
+	worktreesByTask := core.ListWorktreesByTask(worktreesDir, taskIDs, pids)
+	worktrees := worktreesByTask[taskID]
+
+	if len(worktrees) == 0 {
+		logMsg("no worktrees found for task %s", taskID)
+		return
+	}
+
+	// Check if all worktrees are done (not running and in terminal state)
+	allDone := true
+	for _, wt := range worktrees {
+		if wt.IsRunning {
+			allDone = false
+			break
+		}
+		// Terminal states: ready or idle (not implementing or reviewing)
+		if wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing {
+			allDone = false
+			break
+		}
+	}
+
+	if !allDone {
+		logMsg("not all worktrees done yet, skipping auto-converge")
+		return
+	}
+
+	logMsg("all %d worktrees done, attempting to acquire converge lock...", len(worktrees))
+
+	// Try to acquire converge lock (file-based atomic operation)
+	internalDir, err := core.GetInternalDir()
+	if err != nil {
+		logMsg("error: failed to get internal dir: %v", err)
+		return
+	}
+
+	lockFile := filepath.Join(internalDir, fmt.Sprintf("converge-%s.lock", taskID))
+	acquired, lockFd := acquireConvergeLock(lockFile)
+	if !acquired {
+		logMsg("another worker is handling converge, skipping")
+		return
+	}
+	defer releaseConvergeLock(lockFile, lockFd)
+
+	logMsg("acquired converge lock, running convergence...")
+
+	// Filter to only ready worktrees for convergence
+	var readyWorktrees []core.WorktreeInfo
+	for _, wt := range worktrees {
+		if wt.Phase == core.WorktreePhaseReady {
+			readyWorktrees = append(readyWorktrees, wt)
+		}
+	}
+
+	if len(readyWorktrees) == 0 {
+		logMsg("no ready worktrees to converge")
+		return
+	}
+
+	// Run convergence
+	result := ConvergeTask(task, readyWorktrees, gitRoot)
+	if result.Error != nil {
+		logMsg("converge error: %v", result.Error)
+		return
+	}
+
+	logMsg("winner: %s", result.Winner)
+	if result.Reasoning != "" {
+		logMsg("reasoning: %s", result.Reasoning)
+	}
+
+	// Update task with winner
+	tasks[taskIndex].Winner = result.Winner
+	if err := core.SaveTasks(tasks); err != nil {
+		logMsg("error: failed to save tasks: %v", err)
+		return
+	}
+
+	logMsg("auto-converge complete, winner saved to tasks.json")
+}
+
+// acquireConvergeLock attempts to create an exclusive lock file.
+// Returns true if the lock was acquired, along with the file descriptor.
+func acquireConvergeLock(lockFile string) (bool, *os.File) {
+	// Use O_EXCL to ensure atomic creation - only succeeds if file doesn't exist
+	fd, err := os.OpenFile(lockFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		return false, nil
+	}
+	// Write PID for debugging
+	fmt.Fprintf(fd, "%d", os.Getpid())
+	return true, fd
+}
+
+// releaseConvergeLock removes the lock file.
+func releaseConvergeLock(lockFile string, fd *os.File) {
+	if fd != nil {
+		fd.Close()
+	}
+	os.Remove(lockFile)
 }
