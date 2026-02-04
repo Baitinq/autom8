@@ -4,9 +4,8 @@
 >
 > When implementing new features or changes in this repository, you MUST use autom8 itself:
 > 1. `autom8 new` - Create a task describing the change
-> 2. `autom8 implement` - Let AI agents implement it
-> 3. `autom8 converge` - Pick the best implementation
-> 4. `autom8 accept` - Merge the winner
+> 2. `autom8 implement` - Let AI agents implement it (auto-converge picks winner when done)
+> 3. `autom8 accept` - Merge the winner
 >
 > **NEVER use Edit/Write tools on src/ files directly.** This is a dogfooding requirement.
 
@@ -35,7 +34,7 @@ autom8/
 │       ├── new.go           # NewCmd + runFeature
 │       ├── status.go        # StatusCmd + runStatus
 │       ├── implement.go     # ImplementCmd + runImplement + review loop helpers
-│       ├── converge.go      # ConvergeCmd + runConverge + doAccept
+│       ├── converge.go      # ConvergeTask (auto-converge logic)
 │       ├── accept.go        # AcceptCmd + runAccept
 │       ├── delete.go        # DeleteCmd + runDelete
 │       ├── prune.go         # PruneCmd + runPrune
@@ -73,7 +72,7 @@ The fundamental data structure (defined in `src/core/task.go`) containing:
 - **DependsOn** - Optional parent task name
 - **CreatedAt** - Timestamp
 - **Status** - `pending`, `in-progress`, or `completed`
-- **Winner** - Winning worktree name (set by `converge` command)
+- **Winner** - Winning worktree name (set by auto-converge)
 
 ### Worktrees
 
@@ -107,12 +106,12 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 |---------|-------------|
 | `autom8 new` | Create a new task (interactive or via flags) |
 | `autom8 status` | Display all tasks with status (alias: `list`, `ls`) |
-| `autom8 implement -n N` | Run N parallel agents per task; use `--resume` to restart error worktrees |
-| `autom8 converge` | Use AI to pick best implementation from multiple worktrees, with a short reasoning summary |
+| `autom8 implement -n N` | Run N parallel agents per task; auto-converge picks winner when all finish |
+| `autom8 wait` | Wait for worktrees to complete (blocks until ready/idle) |
 | `autom8 pr <worktree>` | Create a draft PR for a worktree |
-| `autom8 accept <worktree>` | Merge a worktree branch and clean up |
+| `autom8 accept <worktree>` | Merge a worktree branch (with AI conflict resolution) and clean up |
 | `autom8 inspect <worktree>` | Open a shell in a worktree directory |
-| `autom8 describe <task-id>` | Show detailed task information |
+| `autom8 describe <task-id>` | Show detailed task information (with AI comparison when >1 ready worktrees) |
 | `autom8 delete <task-id>` | Delete a task |
 | `autom8 complete <task-id>` | Mark a task as completed (alias: `done`) |
 | `autom8 prune` | Delete all completed tasks and clean up worktrees/logs |
@@ -141,9 +140,11 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 - `--add` - Add more implementations to an existing task (allows in-progress tasks)
 - `--resume` - Restart workers for worktrees in error state (ignores `-n`)
 
-**`autom8 converge`**:
-- `-m, --merge` - Auto-merge the winning implementation
-  - Output includes the winning worktree and a 1-2 sentence reasoning summary
+When all worktrees for a task finish, auto-converge runs automatically to pick the best implementation. The winner is saved to `tasks.json`.
+
+**`autom8 wait`**:
+- `autom8 wait <task-name>` - Wait for a specific task's worktrees to complete
+- `autom8 wait --all` - Wait for all in-progress tasks
 
 **`autom8 pr`**:
 - `autom8 pr <worktree>` - Create a draft PR for the specified worktree
@@ -209,7 +210,9 @@ autom8 implement -n N
        ↓
 Multiple branches with implementations
        ↓
-User reviews/merges via standard git
+Auto-converge picks winner (when all worktrees finish)
+       ↓
+autom8 accept <winner> to merge
 ```
 
 ## Branch Naming

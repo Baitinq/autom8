@@ -137,6 +137,19 @@ Stream logs for a specific worktree in real time:
 autom8 logs <worktree>
 ```
 
+Wait for worktrees to finish:
+
+```bash
+autom8 wait my-task     # Wait for a specific task
+autom8 wait --all       # Wait for all in-progress tasks
+```
+
+When all worktrees for a task finish, **auto-converge** runs automatically to pick the best implementation. The winner is saved to `tasks.json`.
+
+Use `autom8 describe <task>` to see task details including:
+- The winning implementation (if auto-converge ran)
+- AI-generated comparison of implementations (when >1 ready worktrees)
+
 ## Creating Pull Requests
 
 Create a draft PR for any worktree:
@@ -164,7 +177,3 @@ Use `autom8 prune` to remove completed tasks and clean up their worktrees/logs.
 If the user provided arguments, they're describing their feature idea: $ARGUMENTS
 
 Begin by understanding what they want to build. If no arguments, ask what feature they'd like to work on.
-
-## Convergence Note
-
-When users ask about evaluating implementations, mention that `autom8 converge` reports both the winning worktree and a brief 1-2 sentence reasoning summary.

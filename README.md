@@ -78,17 +78,23 @@ autom8 logs <worktree>
 
 Streams implementation and review logs in real time and switches when new iteration logs are created.
 
-### Converge implementations
+### Wait for completion
 
 ```bash
-# Converge all tasks with multiple worktrees
-autom8 converge
+# Wait for a specific task's worktrees to finish
+autom8 wait my-task
 
-# Converge a specific task
-autom8 converge my-task
+# Wait for all in-progress tasks
+autom8 wait --all
 ```
 
-Converge outputs the winning worktree plus a short 1-2 sentence reasoning summary.
+Blocks until worktrees reach ready or idle state.
+
+### Auto-converge
+
+When all worktrees for a task finish implementing, auto-converge runs automatically to pick the best implementation using AI. The winner is saved to `tasks.json` and shown in `autom8 describe <task>`.
+
+For tasks with multiple ready worktrees, `autom8 describe` also shows an AI-generated comparison of the implementations.
 
 ### Create a draft PR
 
@@ -142,6 +148,8 @@ Supported tools: `claude`, `codex`, `opencode`.
 1. **Define** - Use `autom8 new` to create tasks with prompts, verification criteria, and dependencies
 2. **Store** - Tasks are saved to `.autom8/tasks.json` (committed to repo)
 3. **Implement** - `autom8 implement` creates git worktrees and runs Claude CLI in each
+4. **Converge** - When all worktrees finish, auto-converge picks the best implementation
+5. **Accept** - `autom8 accept <winner>` merges the winning branch (with AI conflict resolution if needed)
 
 ## Data Storage
 
