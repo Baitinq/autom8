@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	Autom8Dir = ".autom8"
-	TasksFile = "tasks.json"
-	PidsFile  = "pids.json"
+	Autom8Dir   = ".autom8"
+	InternalDir = "internal"
+	TasksFile   = "tasks.json"
+	PidsFile    = "pids.json"
 )
 
 type Task struct {
@@ -62,6 +63,16 @@ func GetAutom8Dir() (string, error) {
 	return filepath.Join(gitRoot, Autom8Dir), nil
 }
 
+// GetInternalDir returns the path to the internal directory (.autom8/internal/).
+// This directory contains ephemeral data like worktrees and logs.
+func GetInternalDir() (string, error) {
+	autom8Dir, err := GetAutom8Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(autom8Dir, InternalDir), nil
+}
+
 func EnsureAutom8Dir() (string, error) {
 	dir, err := GetAutom8Dir()
 	if err != nil {
@@ -72,7 +83,22 @@ func EnsureAutom8Dir() (string, error) {
 		return "", err
 	}
 
+	// Also ensure the internal directory exists for ephemeral data
+	internalDir := filepath.Join(dir, InternalDir)
+	if err := os.MkdirAll(internalDir, 0755); err != nil {
+		return "", err
+	}
+
 	return dir, nil
+}
+
+// EnsureInternalDir ensures the internal directory exists and returns its path.
+func EnsureInternalDir() (string, error) {
+	_, err := EnsureAutom8Dir()
+	if err != nil {
+		return "", err
+	}
+	return GetInternalDir()
 }
 
 func LoadTasks() ([]Task, error) {

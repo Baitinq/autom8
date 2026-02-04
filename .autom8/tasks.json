@@ -22,5 +22,15 @@
     ],
     "created_at": "2026-02-01T18:05:55.638932+01:00",
     "status": "pending"
+  },
+  {
+    "id": "move-pids-internal",
+    "prompt": "Move pids.json into .autom8/internal so all ephemeral data lives under internal. Update LoadPids/SavePids to read/write from .autom8/internal/pids.json. Keep behavior the same otherwise.",
+    "verification_criteria": [
+      "pids.json is stored under .autom8/internal/",
+      "go build succeeds"
+    ],
+    "created_at": "2026-02-04T17:16:57.93755+01:00",
+    "status": "completed"
   }
 ]

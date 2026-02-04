@@ -69,11 +69,14 @@ func runConverge(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get worktrees directory
+	worktreesDir, err := core.GetWorktreesDir()
+	if err != nil {
+		return err
+	}
 	autom8Path, err := core.GetAutom8Dir()
 	if err != nil {
 		return err
 	}
-	worktreesDir := filepath.Join(autom8Path, "worktrees")
 	pids, _ := core.LoadPids()
 
 	// Build map of task ID -> worktrees
@@ -298,7 +301,8 @@ func parseConvergeResponse(response string, worktrees []core.WorktreeInfo) (stri
 }
 
 func doAccept(worktreeName, gitRoot, autom8Path string, tasks []core.Task) error {
-	worktreePath := filepath.Join(autom8Path, "worktrees", worktreeName)
+	worktreesDir, _ := core.GetWorktreesDir()
+	worktreePath := filepath.Join(worktreesDir, worktreeName)
 
 	// Check if worktree exists
 	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {

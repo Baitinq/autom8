@@ -55,7 +55,7 @@ autom8 implement --resume
 autom8 implement my-task --resume
 ```
 
-Each task gets its own git worktree in `.autom8/worktrees/`. Tasks with dependencies branch from their dependency's branch.
+Each task gets its own git worktree in `.autom8/internal/worktrees/`. Tasks with dependencies branch from their dependency's branch.
 
 ### Worktree status
 
@@ -126,8 +126,10 @@ Prune removes completed tasks and cleans up their worktrees/logs.
 ## Data Storage
 
 - `.autom8/tasks.json` - Task definitions (should be committed)
-- `.autom8/worktrees/` - Git worktrees for implementations (gitignored)
-- `.autom8/logs/` - Per-worktree logs (gitignored; pruned with completed tasks)
+- `.autom8/memory.md` - Persistent learnings from past tasks (should be committed)
+- `.autom8/internal/` - Ephemeral data (gitignored)
+  - `worktrees/` - Git worktrees for implementations
+  - `logs/` - Per-worktree logs (pruned with completed tasks)
 
 ## License
 

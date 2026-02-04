@@ -2,9 +2,7 @@
 /autom8
 
 # autom8 runtime directory (tasks.json and memory.md should be committed)
-.autom8/*
-!.autom8/tasks.json
-!.autom8/memory.md
+.autom8/internal/
 .autom8-notes.md
 
 # Editor

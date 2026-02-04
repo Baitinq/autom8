@@ -47,7 +47,7 @@ type WorktreeInfo struct {
 }
 
 func LoadPids() (map[string]int, error) {
-	dir, err := GetAutom8Dir()
+	dir, err := GetInternalDir()
 	if err != nil {
 		return make(map[string]int), nil
 	}
@@ -69,7 +69,7 @@ func LoadPids() (map[string]int, error) {
 }
 
 func SavePids(pids map[string]int) error {
-	dir, err := EnsureAutom8Dir()
+	dir, err := EnsureInternalDir()
 	if err != nil {
 		return err
 	}
@@ -131,10 +131,10 @@ func GetWorktreeInfo(worktreesDir, worktreeName string, pids map[string]int) Wor
 	}
 
 	// Check if the worker is running by looking for the PID file in logs directory
-	// (PID file is stored in .autom8/logs/<worktreeName>/worker.pid to avoid git status noise)
-	autom8Dir, err := GetAutom8Dir()
+	// (PID file is stored in .autom8/internal/logs/<worktreeName>/worker.pid to avoid git status noise)
+	logsDir, err := GetLogsDir()
 	if err == nil {
-		pidFilePath := filepath.Join(autom8Dir, "logs", worktreeName, WorkerPidFile)
+		pidFilePath := filepath.Join(logsDir, worktreeName, WorkerPidFile)
 		if pidData, err := os.ReadFile(pidFilePath); err == nil {
 			if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
 				info.IsRunning = IsProcessRunning(pid)
@@ -160,20 +160,20 @@ func GetWorktreeInfo(worktreesDir, worktreeName string, pids map[string]int) Wor
 }
 
 func GetWorktreesDir() (string, error) {
-	autom8Dir, err := GetAutom8Dir()
+	internalDir, err := GetInternalDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(autom8Dir, "worktrees"), nil
+	return filepath.Join(internalDir, "worktrees"), nil
 }
 
-// GetLogsDir returns the path to the logs directory (.autom8/logs/).
+// GetLogsDir returns the path to the logs directory (.autom8/internal/logs/).
 func GetLogsDir() (string, error) {
-	autom8Dir, err := GetAutom8Dir()
+	internalDir, err := GetInternalDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(autom8Dir, "logs"), nil
+	return filepath.Join(internalDir, "logs"), nil
 }
 
 // ListWorktreesByTask groups worktrees by task ID.
@@ -200,14 +200,14 @@ func ListWorktreesByTask(worktreesDir string, taskIDs map[string]struct{}, pids 
 	return worktreesByTask
 }
 
-// ReadWorktreeStatus reads the status file for a worktree from .autom8/logs/<worktreeName>/status.json
+// ReadWorktreeStatus reads the status file for a worktree from .autom8/internal/logs/<worktreeName>/status.json
 func ReadWorktreeStatus(worktreeName string) (*WorktreeStatus, error) {
-	autom8Dir, err := GetAutom8Dir()
+	logsDir, err := GetLogsDir()
 	if err != nil {
 		return nil, err
 	}
 
-	statusPath := filepath.Join(autom8Dir, "logs", worktreeName, WorktreeStatusFile)
+	statusPath := filepath.Join(logsDir, worktreeName, WorktreeStatusFile)
 	data, err := os.ReadFile(statusPath)
 	if err != nil {
 		return nil, err
@@ -220,14 +220,14 @@ func ReadWorktreeStatus(worktreeName string) (*WorktreeStatus, error) {
 	return &status, nil
 }
 
-// WriteWorktreeStatus writes the status file for a worktree to .autom8/logs/<worktreeName>/status.json
+// WriteWorktreeStatus writes the status file for a worktree to .autom8/internal/logs/<worktreeName>/status.json
 func WriteWorktreeStatus(worktreeName string, status *WorktreeStatus) error {
-	autom8Dir, err := GetAutom8Dir()
+	baseLogsDir, err := GetLogsDir()
 	if err != nil {
 		return err
 	}
 
-	logsDir := filepath.Join(autom8Dir, "logs", worktreeName)
+	logsDir := filepath.Join(baseLogsDir, worktreeName)
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return err
 	}

@@ -55,12 +55,12 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	worktreeName := args[0]
 
 	// Get the logs directory
-	autom8Dir, err := core.GetAutom8Dir()
+	baseLogsDir, err := core.GetLogsDir()
 	if err != nil {
 		return err
 	}
 
-	logsDir := filepath.Join(autom8Dir, "logs", worktreeName)
+	logsDir := filepath.Join(baseLogsDir, worktreeName)
 
 	// Check if the logs directory exists (means worktree has been implemented)
 	if _, err := os.Stat(logsDir); os.IsNotExist(err) {

@@ -262,12 +262,15 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	autom8Path, err := core.EnsureAutom8Dir()
+	_, err = core.EnsureAutom8Dir()
 	if err != nil {
 		return fmt.Errorf("error ensuring autom8 dir: %w", err)
 	}
 
-	worktreesDir := filepath.Join(autom8Path, "worktrees")
+	worktreesDir, err := core.GetWorktreesDir()
+	if err != nil {
+		return fmt.Errorf("error getting worktrees dir: %w", err)
+	}
 	if err := os.MkdirAll(worktreesDir, 0755); err != nil {
 		return fmt.Errorf("error creating worktrees dir: %w", err)
 	}
@@ -407,12 +410,12 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 	worktreePath := filepath.Join(worktreesDir, instanceID)
 
 	branchName := fmt.Sprintf("autom8/%s", instanceID)
-	autom8Path := filepath.Dir(worktreesDir)
+	logsDir, _ := core.GetLogsDir()
 
 	// Check if worktree already exists
 	if _, err := os.Stat(worktreePath); err == nil {
 		// Check if worker is already running (PID file is in logs directory, not worktree)
-		pidFile := filepath.Join(autom8Path, "logs", instanceID, core.WorkerPidFile)
+		pidFile := filepath.Join(logsDir, instanceID, core.WorkerPidFile)
 		if pidData, err := os.ReadFile(pidFile); err == nil {
 			if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
 				if core.IsProcessRunning(pid) {
@@ -424,7 +427,7 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 	}
 
 	// Clear any stale status file for a previous worktree with the same name.
-	statusPath := filepath.Join(autom8Path, "logs", instanceID, core.WorktreeStatusFile)
+	statusPath := filepath.Join(logsDir, instanceID, core.WorktreeStatusFile)
 	if err := os.Remove(statusPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Sprintf("  %s %s: failed to clear stale status: %v", ErrorStyle.Render("[error]"), instanceID, err)
 	}
@@ -452,8 +455,8 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 	upstreamCmd.Run() // Ignore errors - not critical
 
 	// Create logs directory for this worktree
-	logsDir := filepath.Join(autom8Path, "logs", instanceID)
-	if err := os.MkdirAll(logsDir, 0755); err != nil {
+	instanceLogsDir := filepath.Join(logsDir, instanceID)
+	if err := os.MkdirAll(instanceLogsDir, 0755); err != nil {
 		return fmt.Sprintf("  %s %s: failed to create logs dir: %v", ErrorStyle.Render("[error]"), instanceID, err)
 	}
 
@@ -471,7 +474,7 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 	workerCmd := exec.Command(exePath, workerArgs...)
 
 	// Redirect stdout/stderr to log file
-	logFile := filepath.Join(logsDir, workerLogFile)
+	logFile := filepath.Join(instanceLogsDir, workerLogFile)
 	logFd, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Sprintf("  %s %s: failed to create log file: %v", ErrorStyle.Render("[error]"), instanceID, err)
@@ -581,10 +584,10 @@ func runResumeErrorWorktrees(gitRoot string, tasks []core.Task, targetTaskID str
 func spawnWorkerForExistingWorktree(task core.Task, wt core.WorktreeInfo, worktreesDir, exePath string, maxIter int) string {
 	worktreePath := wt.Path
 	worktreeName := wt.Name
-	autom8Path := filepath.Dir(worktreesDir)
+	logsDir, _ := core.GetLogsDir()
 
 	// Check if worker is already running
-	pidFile := filepath.Join(autom8Path, "logs", worktreeName, core.WorkerPidFile)
+	pidFile := filepath.Join(logsDir, worktreeName, core.WorkerPidFile)
 	if pidData, err := os.ReadFile(pidFile); err == nil {
 		if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
 			if core.IsProcessRunning(pid) {
@@ -599,8 +602,8 @@ func spawnWorkerForExistingWorktree(task core.Task, wt core.WorktreeInfo, worktr
 	baseBranch := strings.TrimSpace(string(upstreamOut))
 
 	// Create/ensure logs directory
-	logsDir := filepath.Join(autom8Path, "logs", worktreeName)
-	if err := os.MkdirAll(logsDir, 0755); err != nil {
+	worktreeLogsDir := filepath.Join(logsDir, worktreeName)
+	if err := os.MkdirAll(worktreeLogsDir, 0755); err != nil {
 		return fmt.Sprintf("  %s %s: failed to create logs dir: %v", ErrorStyle.Render("[error]"), worktreeName, err)
 	}
 
@@ -618,7 +621,7 @@ func spawnWorkerForExistingWorktree(task core.Task, wt core.WorktreeInfo, worktr
 	workerCmd := exec.Command(exePath, workerArgs...)
 
 	// Redirect stdout/stderr to log file (append to existing log)
-	logFile := filepath.Join(logsDir, workerLogFile)
+	logFile := filepath.Join(worktreeLogsDir, workerLogFile)
 	logFd, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Sprintf("  %s %s: failed to open log file: %v", ErrorStyle.Render("[error]"), worktreeName, err)

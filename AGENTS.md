@@ -54,10 +54,12 @@ autom8/
 ├── go.mod                   # Go module definition
 ├── README.md                # User documentation
 ├── TODO                     # Planned work items
-└── .autom8/                 # Runtime directory (gitignored except tasks.json)
+└── .autom8/                 # Runtime directory
     ├── tasks.json           # Persisted task definitions (commit this)
-    ├── worktrees/           # Ephemeral worktree directories (gitignored)
-    └── logs/                # Per-worktree logs (gitignored)
+    ├── memory.md            # Persistent learnings from past tasks (commit this)
+    └── internal/            # Ephemeral data (gitignored)
+        ├── worktrees/       # Git worktree directories
+        └── logs/            # Per-worktree logs
 ```
 
 ## Core Concepts
@@ -75,7 +77,7 @@ The fundamental data structure (defined in `src/core/task.go`) containing:
 
 ### Worktrees
 
-Each agent runs in an isolated git worktree at `.autom8/worktrees/{taskID}-{instance}`. This provides:
+Each agent runs in an isolated git worktree at `.autom8/internal/worktrees/{taskID}-{instance}`. This provides:
 - Full repository checkout
 - Separate branch per implementation
 - No conflicts between parallel agents
@@ -255,7 +257,7 @@ Look for `exec.Command("claude", ...)` in `src/cmd/implement.go` or `src/cmd/cha
 
 ## Files That Are Ephemeral
 
-- `.autom8/worktrees/` - Recreated on each implement run
+- `.autom8/internal/` - Contains worktrees and logs, recreated on each implement run
 - `.direnv/` - Local direnv cache
 
 ## Keeping Documentation in Sync

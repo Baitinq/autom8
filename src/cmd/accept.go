@@ -40,12 +40,12 @@ func runAccept(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error getting git root: %w", err)
 	}
 
-	autom8Path, err := core.GetAutom8Dir()
+	worktreesDir, err := core.GetWorktreesDir()
 	if err != nil {
-		return fmt.Errorf("error getting autom8 dir: %w", err)
+		return fmt.Errorf("error getting worktrees dir: %w", err)
 	}
 
-	worktreePath := filepath.Join(autom8Path, "worktrees", worktreeName)
+	worktreePath := filepath.Join(worktreesDir, worktreeName)
 
 	// Check if worktree exists
 	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
@@ -173,7 +173,8 @@ func runAccept(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	statusPath := filepath.Join(autom8Path, "logs", worktreeName, core.WorktreeStatusFile)
+	logsDir, _ := core.GetLogsDir()
+	statusPath := filepath.Join(logsDir, worktreeName, core.WorktreeStatusFile)
 	if err := os.Remove(statusPath); err != nil && !os.IsNotExist(err) {
 		fmt.Printf("%s could not clear worktree status: %v\n", ErrorStyle.Render("Warning:"), err)
 	}

@@ -58,11 +58,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	worktreeName := filepath.Base(workerWorktreePath)
 
 	// Set up logging directory first (needed for PID file)
-	autom8Path, err := core.GetAutom8Dir()
+	baseLogsDir, err := core.GetLogsDir()
 	if err != nil {
 		return err
 	}
-	logsDir := filepath.Join(autom8Path, "logs", worktreeName)
+	logsDir := filepath.Join(baseLogsDir, worktreeName)
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create logs dir: %w", err)
 	}
