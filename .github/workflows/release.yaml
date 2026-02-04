@@ -1,0 +1,84 @@
+name: Daily Release
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes since last release
+        id: check_changes
+        run: |
+          # Get the latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No previous tags found, will create first release"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            # Check if there are commits since the last tag
+            COMMITS_SINCE=$(git rev-list ${LATEST_TAG}..HEAD --count)
+            if [ "$COMMITS_SINCE" -gt 0 ]; then
+              echo "Found $COMMITS_SINCE commits since $LATEST_TAG"
+              echo "has_changes=true" >> $GITHUB_OUTPUT
+            else
+              echo "No changes since $LATEST_TAG, skipping release"
+              echo "has_changes=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Generate release tag
+        if: steps.check_changes.outputs.has_changes == 'true'
+        id: tag
+        run: |
+          TAG=$(date +%Y-%m-%d)
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Will create release: $TAG"
+
+      - name: Check if tag already exists
+        if: steps.check_changes.outputs.has_changes == 'true'
+        id: check_tag
+        run: |
+          TAG=${{ steps.tag.outputs.tag }}
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping"
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Go
+        if: steps.check_changes.outputs.has_changes == 'true' && steps.check_tag.outputs.tag_exists == 'false'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Create and push tag
+        if: steps.check_changes.outputs.has_changes == 'true' && steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a ${{ steps.tag.outputs.tag }} -m "Release ${{ steps.tag.outputs.tag }}"
+          git push origin ${{ steps.tag.outputs.tag }}
+
+      - name: Run GoReleaser
+        if: steps.check_changes.outputs.has_changes == 'true' && steps.check_tag.outputs.tag_exists == 'false'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
