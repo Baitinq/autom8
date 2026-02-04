@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/baitinq/autom8/src/core"
+	"github.com/creack/pty"
 	"github.com/spf13/cobra"
 )
 
@@ -127,11 +130,17 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		// Create log file for this iteration
 		logFile := filepath.Join(logsDir, fmt.Sprintf("iteration-%d.log", iteration))
 
-		// Run claude synchronously and stream output to file in real-time
-		claudeCmd := exec.Command("claude", "-p", prompt, "--dangerously-skip-permissions")
+		// Run claude with PTY for real-time streaming
+		// PTY + --output-format stream-json + --include-partial-messages enables incremental output
+		claudeCmd := exec.Command("claude",
+			"-p", prompt,
+			"--output-format", "stream-json",
+			"--verbose",
+			"--include-partial-messages",
+			"--dangerously-skip-permissions")
 		claudeCmd.Dir = workerWorktreePath
 
-		output, err := runCommandWithStreaming(claudeCmd, logFile)
+		output, err := runCommandWithPTYStreaming(claudeCmd, logFile)
 		if err != nil {
 			return fmt.Errorf("implementation iteration %d failed: %w", iteration, err)
 		}
@@ -291,6 +300,137 @@ func (lw *lockedWriter) Write(p []byte) (int, error) {
 	lw.mu.Lock()
 	defer lw.mu.Unlock()
 	return lw.w.Write(p)
+}
+
+// runCommandWithPTYStreaming runs a command with a PTY for real-time streaming output.
+// This is used for claude implementation phase where PTY enables streaming JSON output.
+// The function parses stream-json format and writes human-readable text to the log file.
+func runCommandWithPTYStreaming(cmd *exec.Cmd, logFile string) ([]byte, error) {
+	// Open log file for streaming output
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer f.Close()
+
+	// Start the command with a PTY
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start command with PTY: %w", err)
+	}
+	defer ptmx.Close()
+
+	// Buffer to capture full raw output for TASK COMPLETE detection
+	var rawOutputBuf bytes.Buffer
+
+	// Read from PTY and parse JSON stream
+	scanner := bufio.NewScanner(ptmx)
+	// Increase buffer size for large JSON lines
+	const maxScanTokenSize = 1024 * 1024 // 1MB
+	buf := make([]byte, maxScanTokenSize)
+	scanner.Buffer(buf, maxScanTokenSize)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		rawOutputBuf.WriteString(line)
+		rawOutputBuf.WriteString("\n")
+
+		// Try to parse as JSON and extract text content for human-readable log
+		text := extractTextFromStreamJSON(line)
+		if text != "" {
+			f.WriteString(text)
+			f.Sync() // Flush immediately for real-time streaming
+		}
+	}
+
+	// Handle scanner error
+	if err := scanner.Err(); err != nil {
+		// EOF is expected when process exits
+		if err != io.EOF {
+			fmt.Fprintf(f, "\n\nSCANNER ERROR: %v\n", err)
+		}
+	}
+
+	// Wait for command to finish
+	cmdErr := cmd.Wait()
+	if cmdErr != nil {
+		// Write error to log file
+		fmt.Fprintf(f, "\n\nERROR: %v\n", cmdErr)
+		return rawOutputBuf.Bytes(), fmt.Errorf("command failed: %w", cmdErr)
+	}
+
+	return rawOutputBuf.Bytes(), nil
+}
+
+// extractTextFromStreamJSON extracts human-readable text from claude's stream-json format.
+// It handles various message types and extracts content appropriately.
+func extractTextFromStreamJSON(line string) string {
+	// Skip empty lines
+	if strings.TrimSpace(line) == "" {
+		return ""
+	}
+
+	// Parse as JSON
+	var msg map[string]interface{}
+	if err := json.Unmarshal([]byte(line), &msg); err != nil {
+		// Not valid JSON - might be plain text output
+		return line + "\n"
+	}
+
+	// Handle different message types in stream-json format
+	msgType, _ := msg["type"].(string)
+
+	switch msgType {
+	case "assistant":
+		// Main assistant message - extract content from message.content array
+		if message, ok := msg["message"].(map[string]interface{}); ok {
+			if content, ok := message["content"].([]interface{}); ok {
+				var text strings.Builder
+				for _, item := range content {
+					if itemMap, ok := item.(map[string]interface{}); ok {
+						if itemMap["type"] == "text" {
+							if textContent, ok := itemMap["text"].(string); ok {
+								text.WriteString(textContent)
+							}
+						}
+					}
+				}
+				return text.String()
+			}
+		}
+	case "content_block_delta":
+		// Incremental text delta
+		if delta, ok := msg["delta"].(map[string]interface{}); ok {
+			if delta["type"] == "text_delta" {
+				if text, ok := delta["text"].(string); ok {
+					return text
+				}
+			}
+		}
+	case "result":
+		// Final result message - extract from result.content
+		if result, ok := msg["result"].(map[string]interface{}); ok {
+			if content, ok := result["content"].([]interface{}); ok {
+				var text strings.Builder
+				for _, item := range content {
+					if itemMap, ok := item.(map[string]interface{}); ok {
+						if itemMap["type"] == "text" {
+							if textContent, ok := itemMap["text"].(string); ok {
+								text.WriteString(textContent)
+							}
+						}
+					}
+				}
+				if text.Len() > 0 {
+					return "\n" + text.String() + "\n"
+				}
+			}
+		}
+	}
+
+	// For other message types (tool_use, etc.), return empty string
+	// The raw output buffer still captures everything for TASK COMPLETE detection
+	return ""
 }
 
 // buildReviewPrompt constructs the prompt for the reviewer agent.
