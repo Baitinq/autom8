@@ -2,10 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 
 	"github.com/baitinq/autom8/src/core"
 	"github.com/spf13/cobra"
@@ -31,19 +27,9 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	taskID := args[0]
 
-	gitRoot, err := core.GetGitRoot()
-	if err != nil {
-		return err
-	}
-
 	tasks, err := core.LoadTasks()
 	if err != nil {
 		return fmt.Errorf("error loading tasks: %w", err)
-	}
-
-	taskIDs := make(map[string]struct{}, len(tasks))
-	for _, t := range tasks {
-		taskIDs[t.ID] = struct{}{}
 	}
 
 	taskIndex := core.FindTaskIndex(tasks, taskID)
@@ -68,42 +54,6 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s", msg)
 	}
 
-	// Clean up associated worktrees
-	worktreesDir, err := core.GetWorktreesDir()
-	if err != nil {
-		return err
-	}
-	var worktreesRemoved int
-
-	if entries, err := os.ReadDir(worktreesDir); err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			worktreeName := entry.Name()
-			worktreeTaskID, ok := core.TaskIDFromWorktree(worktreeName, taskIDs)
-			if !ok || worktreeTaskID != taskID {
-				continue
-			}
-			worktreePath := filepath.Join(worktreesDir, worktreeName)
-			// Get branch name before removing
-			branchCmd := exec.Command("git", "-C", worktreePath, "branch", "--show-current")
-			branchOutput, _ := branchCmd.Output()
-			branchName := strings.TrimSpace(string(branchOutput))
-
-			// Remove worktree
-			removeCmd := exec.Command("git", "-C", gitRoot, "worktree", "remove", "--force", worktreePath)
-			if removeCmd.Run() == nil {
-				worktreesRemoved++
-				// Delete the branch
-				if branchName != "" {
-					deleteBranchCmd := exec.Command("git", "-C", gitRoot, "branch", "-D", branchName)
-					deleteBranchCmd.Run()
-				}
-			}
-		}
-	}
-
 	// Remove the task
 	tasks = append(tasks[:taskIndex], tasks[taskIndex+1:]...)
 
@@ -111,10 +61,6 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error saving tasks: %w", err)
 	}
 
-	if worktreesRemoved > 0 {
-		fmt.Println(SuccessStyle.Render(fmt.Sprintf("Task '%s' deleted, removed %d worktree(s).", taskID, worktreesRemoved)))
-	} else {
-		fmt.Println(SuccessStyle.Render(fmt.Sprintf("Task '%s' deleted.", taskID)))
-	}
+	fmt.Println(SuccessStyle.Render(fmt.Sprintf("Task '%s' deleted.", taskID)))
 	return nil
 }
