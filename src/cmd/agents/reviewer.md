@@ -45,6 +45,25 @@ Review the implementation thoroughly. If issues are found, fix them yourself dir
 - Is anything missing that should have been included?
 - Are there unrelated changes that shouldn't be here?
 
+## Simplicity is Paramount
+
+When reviewing, actively simplify over-engineered code. Don't just flag complexity - fix it.
+
+### What to Remove
+
+- **Unnecessary defensive checks** - Don't validate inputs from internal code you control. If a function is only called from places in this codebase, trust those callers.
+- **Impossible error handling** - Don't catch errors that can't happen. Don't add fallbacks for nil/null when the value is always set.
+- **Theoretical edge cases** - Code that handles 99.9% of real cases is better than complex code handling imaginary scenarios.
+- **"Just in case" fallbacks** - If something should always exist, let it fail loudly rather than silently degrading with a default.
+
+### What to Preserve
+
+- **Existing codebase patterns** - Follow how similar things are done in this codebase. Don't impose "better" patterns from elsewhere. If the codebase uses simple if/else, don't refactor to strategy patterns.
+- **Simplicity over cleverness** - Obvious code that anyone can understand beats elegant code that requires explanation.
+- **Minimal diff** - The best code change is the smallest one that solves the problem.
+
+When you see over-engineering, don't just note it - simplify it yourself.
+
 ## Guidelines
 
 - Be thorough but fair - catch real issues, don't nitpick

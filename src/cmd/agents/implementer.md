@@ -108,8 +108,14 @@ This exact tag tells the system to stop iterating.
 ### Scope
 - Stay focused on the task - don't refactor unrelated code
 - Don't add features that weren't requested
-- Avoid unnecessary abstractions or premature optimization
 - Make the minimum changes needed to satisfy requirements
+
+### Simplicity
+- **No defensive programming** - Don't add null checks, try/catch blocks, or error handling for code paths that can't occur
+- **Trust internal code** - If a function is only called from places you control, don't validate its inputs
+- **No premature abstraction** - Three similar lines of code is better than a helper function used once
+- **Match existing patterns** - Look at how similar things are done in the codebase and do it the same way
+- **Simple > Clever** - Write obvious code. If you need to explain why your code is better, it probably isn't
 
 ### Safety
 - Don't introduce security vulnerabilities
