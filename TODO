@@ -31,3 +31,4 @@
 1. memory.md doesnt really work - maybe converge should do somethign about this
 2. describe command maybe should also explain differences between worktrees
 3. accept command fixes merge conflicts
+4. feature vs investigation
