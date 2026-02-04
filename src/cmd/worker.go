@@ -28,7 +28,6 @@ var (
 	workerBaseBranch   string
 	workerTaskID       string
 	workerMaxIter      int
-	workerNoConverge   bool
 )
 
 // WorkerCmd is a hidden command that runs implementation and review loops for a single worktree.
@@ -45,7 +44,6 @@ func init() {
 	WorkerCmd.Flags().StringVar(&workerBaseBranch, "base-branch", "", "Base branch for review (defaults to repo default)")
 	WorkerCmd.Flags().StringVar(&workerTaskID, "task-id", "", "Task ID being implemented")
 	WorkerCmd.Flags().IntVar(&workerMaxIter, "max-iterations", 0, "Maximum iterations (0 = unlimited)")
-	WorkerCmd.Flags().BoolVar(&workerNoConverge, "no-converge", false, "Disable automatic convergence when all worktrees complete")
 	WorkerCmd.MarkFlagRequired("worktree-path")
 	WorkerCmd.MarkFlagRequired("task-id")
 }
@@ -169,10 +167,8 @@ func runWorker(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to write worktree status: %w", err)
 			}
 
-			// Try auto-converge if not disabled
-			if !workerNoConverge {
-				tryAutoConverge(workerTaskID, worktreeName, logsDir)
-			}
+			// Try auto-converge
+			tryAutoConverge(workerTaskID, worktreeName, logsDir)
 			return nil // Success
 		}
 
