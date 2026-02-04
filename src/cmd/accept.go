@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -128,9 +129,41 @@ func runAccept(cmd *cobra.Command, args []string) error {
 	mergeCmd := exec.Command("git", "-C", gitRoot, "merge", "--squash", branchName)
 	mergeOutput, err := mergeCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("error merging branch: %w\n%s\nResolve conflicts manually, then run 'autom8 accept' again to clean up", err, string(mergeOutput))
+		// Check for merge conflicts
+		conflictFiles, conflictErr := getConflictingFiles(gitRoot)
+		if conflictErr != nil || len(conflictFiles) == 0 {
+			return fmt.Errorf("error merging branch: %w\n%s\nResolve conflicts manually, then run 'autom8 accept' again to clean up", err, string(mergeOutput))
+		}
+
+		// Attempt AI-assisted conflict resolution
+		fmt.Println(SubtitleStyle.Render(fmt.Sprintf("Merge conflicts detected in %d file(s), attempting AI resolution...", len(conflictFiles))))
+
+		// Load task info to provide context for conflict resolution
+		tasks, _ := core.LoadTasks()
+		taskIDs := make(map[string]struct{})
+		for _, t := range tasks {
+			taskIDs[t.ID] = struct{}{}
+		}
+		taskID, _ := core.TaskIDFromWorktree(worktreeName, taskIDs)
+		var taskPrompt string
+		for _, t := range tasks {
+			if t.ID == taskID {
+				taskPrompt = t.Prompt
+				break
+			}
+		}
+
+		if err := resolveConflictsWithAI(gitRoot, conflictFiles, taskPrompt); err != nil {
+			// Abort the merge on failure
+			abortCmd := exec.Command("git", "-C", gitRoot, "merge", "--abort")
+			abortCmd.Run()
+			return fmt.Errorf("AI conflict resolution failed: %w\nMerge has been aborted", err)
+		}
+
+		fmt.Println(SuccessStyle.Render("AI successfully resolved all conflicts."))
+	} else {
+		fmt.Printf("%s", string(mergeOutput))
 	}
-	fmt.Printf("%s", string(mergeOutput))
 
 	// Commit the squashed changes with the first commit message
 	commitCmd := exec.Command("git", "-C", gitRoot, "commit", "-F", "-")
@@ -182,4 +215,133 @@ func runAccept(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println(SuccessStyle.Render(fmt.Sprintf("Successfully accepted worktree '%s'", worktreeName)))
 	return nil
+}
+
+// getConflictingFiles returns the list of files with merge conflicts.
+func getConflictingFiles(gitRoot string) ([]string, error) {
+	cmd := exec.Command("git", "-C", gitRoot, "diff", "--name-only", "--diff-filter=U")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.TrimSpace(string(output))
+	if lines == "" {
+		return nil, nil
+	}
+
+	return strings.Split(lines, "\n"), nil
+}
+
+// resolveConflictsWithAI attempts to resolve merge conflicts using Claude AI.
+func resolveConflictsWithAI(gitRoot string, conflictFiles []string, taskPrompt string) error {
+	for _, file := range conflictFiles {
+		fmt.Printf("  Resolving conflicts in %s...\n", HighlightStyle.Render(file))
+
+		filePath := filepath.Join(gitRoot, file)
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", file, err)
+		}
+
+		resolved, err := resolveFileConflictWithAI(file, string(content), taskPrompt)
+		if err != nil {
+			return fmt.Errorf("failed to resolve %s: %w", file, err)
+		}
+
+		if err := os.WriteFile(filePath, []byte(resolved), 0644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", file, err)
+		}
+
+		// Stage the resolved file
+		addCmd := exec.Command("git", "-C", gitRoot, "add", file)
+		if output, err := addCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to stage %s: %w\n%s", file, err, string(output))
+		}
+	}
+
+	return nil
+}
+
+// resolveFileConflictWithAI uses Claude to resolve conflicts in a single file.
+func resolveFileConflictWithAI(filename, content, taskPrompt string) (string, error) {
+	prompt := buildConflictResolutionPrompt(filename, content, taskPrompt)
+
+	cmd := exec.Command("claude", "-p", "-", "--output-format", "json")
+	cmd.Stdin = strings.NewReader(prompt)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("claude command failed: %w", err)
+	}
+
+	// Parse the JSON response
+	var jsonResp struct {
+		Result string `json:"result"`
+	}
+	if err := json.Unmarshal(output, &jsonResp); err != nil {
+		return "", fmt.Errorf("failed to parse claude response: %w", err)
+	}
+
+	// Extract the resolved file content from the response
+	resolved := extractResolvedContent(jsonResp.Result)
+	if resolved == "" {
+		return "", fmt.Errorf("could not extract resolved content from AI response")
+	}
+
+	return resolved, nil
+}
+
+func buildConflictResolutionPrompt(filename, content, taskPrompt string) string {
+	var sb strings.Builder
+
+	sb.WriteString("You are resolving a git merge conflict. The worktree branch contains changes for a specific task, and those changes need to be merged into the main branch.\n\n")
+
+	if taskPrompt != "" {
+		sb.WriteString("## Task Context\n\n")
+		sb.WriteString("The worktree was implementing this task:\n")
+		sb.WriteString(taskPrompt)
+		sb.WriteString("\n\n")
+	}
+
+	sb.WriteString("## Conflicting File\n\n")
+	sb.WriteString(fmt.Sprintf("Filename: %s\n\n", filename))
+	sb.WriteString("```\n")
+	sb.WriteString(content)
+	sb.WriteString("\n```\n\n")
+
+	sb.WriteString("## Instructions\n\n")
+	sb.WriteString("Resolve the merge conflict by:\n")
+	sb.WriteString("1. Understanding what the worktree branch was trying to accomplish\n")
+	sb.WriteString("2. Preserving the worktree's changes while integrating any necessary updates from the main branch\n")
+	sb.WriteString("3. Removing ALL conflict markers (<<<<<<< HEAD, =======, >>>>>>> branch)\n")
+	sb.WriteString("4. Ensuring the result is syntactically correct and functional\n\n")
+	sb.WriteString("When in doubt, prefer the worktree's changes since they represent the new feature being merged.\n\n")
+	sb.WriteString("IMPORTANT: Your response MUST include the complete resolved file content wrapped in these tags:\n")
+	sb.WriteString("<resolved-file>\n")
+	sb.WriteString("(complete file content here)\n")
+	sb.WriteString("</resolved-file>\n\n")
+	sb.WriteString("Do NOT include any explanations inside the tags - only the raw file content.\n")
+
+	return sb.String()
+}
+
+func extractResolvedContent(response string) string {
+	start := strings.Index(response, "<resolved-file>")
+	if start == -1 {
+		return ""
+	}
+	start += len("<resolved-file>")
+
+	end := strings.Index(response[start:], "</resolved-file>")
+	if end == -1 {
+		return ""
+	}
+
+	content := response[start : start+end]
+	// Trim the leading newline (after opening tag) but keep trailing newline for proper file formatting
+	content = strings.TrimPrefix(content, "\n")
+	// Ensure file ends with exactly one newline (standard for source files)
+	content = strings.TrimRight(content, "\n") + "\n"
+	return content
 }
