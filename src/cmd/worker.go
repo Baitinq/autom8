@@ -625,13 +625,13 @@ func tryAutoConverge(taskID, worktreeName, logsDir string) {
 		return
 	}
 
-	// Check if all worktrees are done (not running and in terminal state)
+	// Check if all worktrees are done by examining their Phase status.
+	// We intentionally ignore IsRunning (PID-based check) because:
+	// 1. Workers update status.json atomically before exiting
+	// 2. PID checks can race when workers finish close together
+	// 3. A worker that has set Phase=ready has completed all its work
 	allDone := true
 	for _, wt := range worktrees {
-		if wt.IsRunning {
-			allDone = false
-			break
-		}
 		// Terminal states: ready or idle (not implementing or reviewing)
 		if wt.Phase == core.WorktreePhaseImplementing || wt.Phase == core.WorktreePhaseReviewing {
 			allDone = false
