@@ -28,6 +28,7 @@ var (
 	workerBaseBranch   string
 	workerTaskID       string
 	workerMaxIter      int
+	workerAutoAccept   bool
 )
 
 // WorkerCmd is a hidden command that runs implementation and review loops for a single worktree.
@@ -44,6 +45,7 @@ func init() {
 	WorkerCmd.Flags().StringVar(&workerBaseBranch, "base-branch", "", "Base branch for review (defaults to repo default)")
 	WorkerCmd.Flags().StringVar(&workerTaskID, "task-id", "", "Task ID being implemented")
 	WorkerCmd.Flags().IntVar(&workerMaxIter, "max-iterations", 0, "Maximum iterations (0 = unlimited)")
+	WorkerCmd.Flags().BoolVar(&workerAutoAccept, "auto-accept", false, "Automatically accept the winning worktree after auto-converge")
 	WorkerCmd.MarkFlagRequired("worktree-path")
 	WorkerCmd.MarkFlagRequired("task-id")
 }
@@ -176,7 +178,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 			}
 
 			// Try auto-converge
-			tryAutoConverge(workerTaskID, worktreeName, logsDir)
+			tryAutoConverge(workerTaskID, worktreeName, logsDir, workerAutoAccept)
 			return nil // Success
 		}
 
@@ -589,7 +591,8 @@ func buildReviewPrompt(task core.Task, worktreePath, baseBranch string) (string,
 
 // tryAutoConverge checks if all sibling worktrees for a task are done and triggers convergence.
 // This function handles race conditions via file locking to ensure only one worker runs converge.
-func tryAutoConverge(taskID, worktreeName, logsDir string) {
+// If autoAccept is true, the winning worktree is automatically accepted (merged) after convergence.
+func tryAutoConverge(taskID, worktreeName, logsDir string, autoAccept bool) {
 	// Open log file for appending converge output
 	logFile := filepath.Join(logsDir, WorkerLogFile)
 	logFd, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -719,6 +722,16 @@ func tryAutoConverge(taskID, worktreeName, logsDir string) {
 
 	// Extract learnings and append to memory.md
 	extractMemoryLearnings(task, readyWorktrees, result.Winner, gitRoot, logMsg)
+
+	// Auto-accept the winning worktree if flag is set
+	if autoAccept {
+		logMsg("auto-accept enabled, accepting winner: %s", result.Winner)
+		if err := AcceptWorktree(result.Winner, gitRoot); err != nil {
+			logMsg("auto-accept error: %v", err)
+			return
+		}
+		logMsg("auto-accept complete, winner merged to main branch")
+	}
 }
 
 // acquireConvergeLock attempts to create an exclusive lock file.

@@ -23,10 +23,11 @@ const (
 )
 
 var (
-	numInstances  int
-	maxIterations int
-	addMode       bool
-	resumeMode    bool
+	numInstances   int
+	maxIterations  int
+	addMode        bool
+	resumeMode     bool
+	autoAcceptMode bool
 )
 
 var ImplementCmd = &cobra.Command{
@@ -74,6 +75,7 @@ func init() {
 	ImplementCmd.Flags().IntVarP(&maxIterations, "max-iterations", "m", 0, "Maximum iterations per worktree (0 = unlimited)")
 	ImplementCmd.Flags().BoolVar(&addMode, "add", false, "Add more implementations to an existing task (allows in-progress tasks)")
 	ImplementCmd.Flags().BoolVar(&resumeMode, "resume", false, "Restart workers for worktrees in error state")
+	ImplementCmd.Flags().BoolVar(&autoAcceptMode, "auto-accept", false, "Automatically accept the winning worktree after auto-converge")
 }
 
 func loadAgentTemplate(name string) (string, error) {
@@ -395,7 +397,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 			instanceNum := startInstance + i
 			suffix := fmt.Sprintf("-%d", instanceNum)
 			independentBranches[task.ID][i] = suffix
-			result := spawnWorkerForTask(task, gitRoot, worktreesDir, "", suffix, exePath, maxIterations)
+			result := spawnWorkerForTask(task, gitRoot, worktreesDir, "", suffix, exePath, maxIterations, autoAcceptMode)
 			spawnedWorkers = append(spawnedWorkers, result)
 		}
 	}
@@ -425,7 +427,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 				instanceNum := startInstance + i
 				suffix := fmt.Sprintf("%s-%d", depSuffix, instanceNum)
 				baseBranch := fmt.Sprintf("%s%s", task.DependsOn, depSuffix)
-				result := spawnWorkerForTask(task, gitRoot, worktreesDir, baseBranch, suffix, exePath, maxIterations)
+				result := spawnWorkerForTask(task, gitRoot, worktreesDir, baseBranch, suffix, exePath, maxIterations, autoAcceptMode)
 				spawnedWorkers = append(spawnedWorkers, result)
 			}
 		}
@@ -443,7 +445,7 @@ func runImplement(cmd *cobra.Command, args []string) error {
 }
 
 // spawnWorkerForTask creates a worktree and spawns a detached worker subprocess
-func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suffix, exePath string, maxIter int) string {
+func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suffix, exePath string, maxIter int, autoAccept bool) string {
 	instanceID := task.ID + suffix
 	worktreePath := filepath.Join(worktreesDir, instanceID)
 
@@ -507,6 +509,9 @@ func spawnWorkerForTask(task core.Task, gitRoot, worktreesDir, baseBranchID, suf
 	}
 	if maxIter > 0 {
 		workerArgs = append(workerArgs, "--max-iterations", strconv.Itoa(maxIter))
+	}
+	if autoAccept {
+		workerArgs = append(workerArgs, "--auto-accept")
 	}
 
 	workerCmd := exec.Command(exePath, workerArgs...)
@@ -602,7 +607,7 @@ func runResumeErrorWorktrees(gitRoot string, tasks []core.Task, targetTaskID str
 	for i, wt := range errorWorktrees {
 		taskID := errorTaskIDs[i]
 		task := taskMap[taskID]
-		result := spawnWorkerForExistingWorktree(task, wt, worktreesDir, exePath, maxIter)
+		result := spawnWorkerForExistingWorktree(task, wt, worktreesDir, exePath, maxIter, autoAcceptMode)
 		spawnedWorkers = append(spawnedWorkers, result)
 	}
 
@@ -619,7 +624,7 @@ func runResumeErrorWorktrees(gitRoot string, tasks []core.Task, targetTaskID str
 
 // spawnWorkerForExistingWorktree spawns a worker subprocess for an existing worktree.
 // Unlike spawnWorkerForTask, this does not create a new worktree or branch.
-func spawnWorkerForExistingWorktree(task core.Task, wt core.WorktreeInfo, worktreesDir, exePath string, maxIter int) string {
+func spawnWorkerForExistingWorktree(task core.Task, wt core.WorktreeInfo, worktreesDir, exePath string, maxIter int, autoAccept bool) string {
 	worktreePath := wt.Path
 	worktreeName := wt.Name
 	logsDir, _ := core.GetLogsDir()
@@ -654,6 +659,9 @@ func spawnWorkerForExistingWorktree(task core.Task, wt core.WorktreeInfo, worktr
 	}
 	if maxIter > 0 {
 		workerArgs = append(workerArgs, "--max-iterations", strconv.Itoa(maxIter))
+	}
+	if autoAccept {
+		workerArgs = append(workerArgs, "--auto-accept")
 	}
 
 	workerCmd := exec.Command(exePath, workerArgs...)

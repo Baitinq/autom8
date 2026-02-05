@@ -41,6 +41,22 @@ func runAccept(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error getting git root: %w", err)
 	}
 
+	if err := AcceptWorktree(worktreeName, gitRoot); err != nil {
+		// Add user-friendly context for the CLI command
+		if strings.Contains(err.Error(), "not found") {
+			return fmt.Errorf("%w\nRun 'autom8 status' to see available worktrees", err)
+		}
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println(SuccessStyle.Render(fmt.Sprintf("Successfully accepted worktree '%s'", worktreeName)))
+	return nil
+}
+
+// AcceptWorktree squash-merges a worktree branch into the current branch at gitRoot.
+// This is the core accept logic used by both the accept command and auto-accept.
+func AcceptWorktree(worktreeName, gitRoot string) error {
 	worktreesDir, err := core.GetWorktreesDir()
 	if err != nil {
 		return fmt.Errorf("error getting worktrees dir: %w", err)
@@ -50,7 +66,7 @@ func runAccept(cmd *cobra.Command, args []string) error {
 
 	// Check if worktree exists
 	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
-		return fmt.Errorf("worktree '%s' not found\nRun 'autom8 status' to see available worktrees", worktreeName)
+		return fmt.Errorf("worktree '%s' not found", worktreeName)
 	}
 
 	// Get the branch name from the worktree
@@ -206,8 +222,6 @@ func runAccept(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Println()
-	fmt.Println(SuccessStyle.Render(fmt.Sprintf("Successfully accepted worktree '%s'", worktreeName)))
 	return nil
 }
 
