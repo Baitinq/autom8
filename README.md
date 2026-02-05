@@ -28,6 +28,10 @@ go build -o autom8 ./src
 
 ### Create a task
 
+autom8 supports two types of tasks:
+- **Implementation tasks** (`autom8 new`) - For building features, fixing bugs, or making code changes
+- **Investigation tasks** (`autom8 investigate`) - For understanding, debugging, or researching code
+
 ```bash
 # Interactive mode
 autom8 new
@@ -37,6 +41,21 @@ autom8 new -p "Add user authentication" -c "Login endpoint works" -c "Passwords 
 
 # With dependency on another task
 autom8 new -p "Add logout button" -d task-1234567890
+```
+
+### Create an investigation task
+
+Investigation tasks are for understanding code, debugging issues, or researching how something works. Results are written to `.autom8/investigations/<task-id>.md`.
+
+```bash
+# Interactive mode
+autom8 investigate
+
+# Non-interactive mode
+autom8 investigate -n debug-flaky-test -p "Why is TestFoo flaky?"
+
+# With success criteria
+autom8 investigate -n auth-flow -p "How does auth work?" -c "Document the flow" -c "List all auth endpoints"
 ```
 
 ### List tasks

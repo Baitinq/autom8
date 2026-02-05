@@ -66,18 +66,31 @@ Supported tools: `claude`, `codex`, `opencode`.
 
 ## When Ready
 
-Once you've discussed the feature enough and the user confirms they're ready to create the task, run `new` with the appropriate flags:
+Once you've discussed the feature enough and the user confirms they're ready to create the task, choose the appropriate command:
+
+- **Implementation tasks** (`autom8 new`) - For building features, fixing bugs, or making code changes
+- **Investigation tasks** (`autom8 investigate`) - For understanding, debugging, or researching code
 
 ```bash
+# Implementation task
 autom8 new -n "<task-name>" -p "<prompt>" -c "<criterion1>" -c "<criterion2>" ...
+
+# Investigation task
+autom8 investigate -n "<task-name>" -p "<question>" -c "<criterion1>" -c "<criterion2>" ...
 ```
 
-### Flags
+### Flags for `autom8 new`
 
 - `-n/--name` - A unique, descriptive task name (e.g., `add-logout-button`, `fix-auth-bug`)
 - `-p/--prompt` - Clear instructions for the implementation agent
 - `-c/--criteria` - Verification criteria (can be specified multiple times)
 - `-d/--depends-on` - Task name this depends on (if applicable)
+
+### Flags for `autom8 investigate`
+
+- `-n/--name` - A unique, descriptive task name (e.g., `debug-flaky-test`, `auth-flow`)
+- `-p/--prompt` - Investigation question or goal
+- `-c/--criteria` - Success criteria (can be specified multiple times)
 
 ### Guidelines for the command
 
@@ -87,8 +100,9 @@ autom8 new -n "<task-name>" -p "<prompt>" -c "<criterion1>" -c "<criterion2>" ..
 - Keep criteria concrete and testable (not vague like "code is clean")
 - Only add `-d` dependency if this task truly requires another task to be completed first
 
-### Example
+### Examples
 
+**Implementation task:**
 ```bash
 autom8 new \
   -n "add-dry-run-flag" \
@@ -98,6 +112,16 @@ autom8 new \
   -c "With --dry-run, no Claude processes are spawned" \
   -c "Output shows what would have been created (worktree paths, branch names)" \
   -c "Flag is documented in help text"
+```
+
+**Investigation task:**
+```bash
+autom8 investigate \
+  -n "debug-flaky-test" \
+  -p "Why is TestFoo flaky? What conditions cause it to fail?" \
+  -c "Identified root cause" \
+  -c "Documented reproduction steps" \
+  -c "Proposed fix approach"
 ```
 
 ## Editing Tasks

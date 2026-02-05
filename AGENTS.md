@@ -39,6 +39,7 @@ autom8/
 │       ├── delete.go        # DeleteCmd + runDelete
 │       ├── prune.go         # PruneCmd + runPrune
 │       ├── inspect.go       # InspectCmd + runInspect
+│       ├── investigate.go   # InvestigateCmd + runInvestigate
 │       ├── describe.go      # DescribeCmd + runDescribe
 │       ├── edit.go          # EditCmd + runEdit
 │       ├── show.go          # ShowCmd + runShow + pipeToLess
@@ -67,12 +68,20 @@ autom8/
 
 The fundamental data structure (defined in `src/core/task.go`) containing:
 - **ID** - Unique identifier (user-defined name like `add-login-page`, or auto-generated `task-<unix-nano>`)
-- **Prompt** - Implementation instruction
+- **Type** - Either `implementation` (default) or `investigation`
+- **Prompt** - Implementation instruction or investigation question
 - **VerificationCriteria** - List of success criteria
 - **DependsOn** - Optional parent task name
 - **CreatedAt** - Timestamp
 - **Status** - `pending`, `in-progress`, or `completed`
 - **Winner** - Winning worktree name (set by auto-converge)
+
+### Task Types
+
+autom8 supports two types of tasks:
+
+- **Implementation tasks** (default) - For building features, fixing bugs, or making code changes. Created with `autom8 new`. Agents focus on writing and committing code.
+- **Investigation tasks** - For understanding, debugging, or researching code. Created with `autom8 investigate`. Agents focus on exploration and write findings to `.autom8/investigations/<task-id>.md`.
 
 ### Worktrees
 
@@ -104,7 +113,8 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 
 | Command | Description |
 |---------|-------------|
-| `autom8 new` | Create a new task (interactive or via flags) |
+| `autom8 new` | Create a new implementation task (interactive or via flags) |
+| `autom8 investigate` | Create a new investigation task (interactive or via flags) |
 | `autom8 status` | Display all tasks with status (alias: `list`, `ls`) |
 | `autom8 implement -n N` | Run N parallel agents per task; auto-converge picks winner when all finish |
 | `autom8 wait` | Wait for worktrees to complete (blocks until ready/idle) |
@@ -127,6 +137,11 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 - `-p <prompt>` - Task prompt (non-interactive)
 - `-c <criterion>` - Verification criterion (repeatable)
 - `-d <task-name>` - Dependency task name
+
+**`autom8 investigate`**:
+- `-n <name>` - Task name (unique identifier, e.g., `debug-flaky-test`)
+- `-p <prompt>` - Investigation question/goal (non-interactive)
+- `-c <criterion>` - Success criterion (repeatable)
 
 **`autom8 edit <task-name>`**:
 - `-n <name>` - Rename the task
