@@ -134,13 +134,29 @@ func runImport(cmd *cobra.Command, args []string) error {
 	}
 
 	// Show summary
-	fmt.Printf("\n%s\n", TitleStyle.Render(fmt.Sprintf("Importing %d task(s):", len(validTasks))))
+	var completeTasks, incompleteTasks []ImportedTask
 	for _, t := range validTasks {
+		if strings.TrimSpace(t.Prompt) == "" || len(t.Criteria) == 0 {
+			incompleteTasks = append(incompleteTasks, t)
+		} else {
+			completeTasks = append(completeTasks, t)
+		}
+	}
+
+	fmt.Printf("\n%s\n", TitleStyle.Render(fmt.Sprintf("Importing %d task(s):", len(validTasks))))
+	for _, t := range completeTasks {
 		dep := ""
 		if t.DependsOn != "" {
 			dep = fmt.Sprintf(" (depends on: %s)", t.DependsOn)
 		}
 		fmt.Printf("  - %s%s\n", NameStyle.Render(t.Name), dep)
+	}
+	for _, t := range incompleteTasks {
+		dep := ""
+		if t.DependsOn != "" {
+			dep = fmt.Sprintf(" (depends on: %s)", t.DependsOn)
+		}
+		fmt.Printf("  - %s%s %s\n", NameStyle.Render(t.Name), dep, SubtitleStyle.Render("[needs definition - use 'autom8 edit']"))
 	}
 
 	if len(invalidTasks) > 0 {
@@ -232,13 +248,21 @@ func buildImportPrompt(input string, existingTasks []core.Task) string {
 	sb.WriteString("## Your Task\n\n")
 	sb.WriteString("1. Parse the input (it could be markdown, bullets, numbered lists, prose, Jira output, etc.)\n")
 	sb.WriteString("2. Extract discrete tasks from the content\n")
-	sb.WriteString("3. For each task, determine:\n")
+	sb.WriteString("3. For each task, classify it as WELL-DEFINED or VAGUE:\n\n")
+	sb.WriteString("   **WELL-DEFINED tasks** have clear descriptions explaining what to implement:\n")
+	sb.WriteString("   - Set **name**, **prompt** (clear instruction), and **criteria** (success criteria)\n\n")
+	sb.WriteString("   **VAGUE tasks** are brief/unclear items (e.g., just 'Add login', 'Fix bug', 'Update tests'):\n")
+	sb.WriteString("   - Set **name** only (derived from the brief text)\n")
+	sb.WriteString("   - Leave **prompt** empty (empty string \"\")\n")
+	sb.WriteString("   - Leave **criteria** empty (empty array [])\n")
+	sb.WriteString("   - The user will need to flesh these out later with 'autom8 edit'\n\n")
+	sb.WriteString("4. For each task field:\n")
 	sb.WriteString("   - **name**: A kebab-case identifier (max 50 chars, alphanumeric with dashes/underscores)\n")
-	sb.WriteString("   - **prompt**: What should be implemented (clear instruction)\n")
-	sb.WriteString("   - **criteria**: Verification criteria if inferrable from the input (optional array)\n")
+	sb.WriteString("   - **prompt**: What should be implemented (clear instruction) - LEAVE EMPTY FOR VAGUE TASKS\n")
+	sb.WriteString("   - **criteria**: Verification criteria - LEAVE EMPTY FOR VAGUE TASKS\n")
 	sb.WriteString("   - **depends_on**: Another task name if there's a logical dependency (optional)\n")
-	sb.WriteString("4. Skip tasks that seem to match existing ones (fuzzy match on intent/meaning)\n")
-	sb.WriteString("5. Infer dependencies when logical (e.g., 'after X is done', 'requires Y', ordering)\n\n")
+	sb.WriteString("5. Skip tasks that seem to match existing ones (fuzzy match on intent/meaning)\n")
+	sb.WriteString("6. Infer dependencies when logical (e.g., 'after X is done', 'requires Y', ordering)\n\n")
 
 	sb.WriteString("## Output Format\n\n")
 	sb.WriteString("Output ONLY a JSON object inside <output> tags with this structure:\n\n")
@@ -260,7 +284,8 @@ func buildImportPrompt(input string, existingTasks []core.Task) string {
 	sb.WriteString("- Output ONLY the JSON inside <output></output> tags, no other text\n")
 	sb.WriteString("- Task names must be valid: start with alphanumeric, contain only alphanumeric/dashes/underscores, max 50 chars\n")
 	sb.WriteString("- Dependencies must reference other tasks in the same import OR existing tasks\n")
-	sb.WriteString("- If no tasks are found, return {\"tasks\": [], \"skipped\": []}\n\n")
+	sb.WriteString("- If no tasks are found, return {\"tasks\": [], \"skipped\": []}\n")
+	sb.WriteString("- BE CONSERVATIVE: For vague/brief items, set name only with empty prompt and criteria. Only fill in prompt/criteria for well-defined tasks with clear descriptions.\n\n")
 
 	sb.WriteString("<output>\n")
 
@@ -372,11 +397,8 @@ func validateImportedTasks(tasks []ImportedTask, existingTasks []core.Task) ([]I
 			}
 		}
 
-		// Validate prompt is not empty
-		if strings.TrimSpace(t.Prompt) == "" {
-			invalid = append(invalid, fmt.Sprintf("%s: empty prompt", t.Name))
-			continue
-		}
+		// Note: We allow empty prompts and criteria for vague tasks.
+		// The user will need to complete them with 'autom8 edit' before implementing.
 
 		valid = append(valid, t)
 		addedIDs[t.Name] = true

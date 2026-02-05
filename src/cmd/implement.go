@@ -262,6 +262,41 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Filter out tasks that are missing prompt or criteria
+	var readyTasks []core.Task
+	var skippedTasks []core.Task
+	for _, task := range pendingTasks {
+		if strings.TrimSpace(task.Prompt) == "" || len(task.VerificationCriteria) == 0 {
+			skippedTasks = append(skippedTasks, task)
+		} else {
+			readyTasks = append(readyTasks, task)
+		}
+	}
+
+	// Show skipped tasks
+	if len(skippedTasks) > 0 {
+		for _, task := range skippedTasks {
+			reason := "missing prompt and criteria"
+			if strings.TrimSpace(task.Prompt) == "" && len(task.VerificationCriteria) > 0 {
+				reason = "missing prompt"
+			} else if strings.TrimSpace(task.Prompt) != "" && len(task.VerificationCriteria) == 0 {
+				reason = "missing criteria"
+			}
+			fmt.Printf("%s Skipping task '%s': %s. Use 'autom8 edit %s' to complete it.\n",
+				SubtitleStyle.Render("[skip]"), NameStyle.Render(task.ID), reason, task.ID)
+		}
+		if len(readyTasks) > 0 {
+			fmt.Println()
+		}
+	}
+
+	pendingTasks = readyTasks
+
+	if len(pendingTasks) == 0 {
+		fmt.Println(SubtitleStyle.Render("No tasks ready to implement."))
+		return nil
+	}
+
 	_, err = core.EnsureAutom8Dir()
 	if err != nil {
 		return fmt.Errorf("error ensuring autom8 dir: %w", err)
