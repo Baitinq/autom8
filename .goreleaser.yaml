@@ -39,4 +39,4 @@ release:
     owner: Baitinq
     name: autom8
   draft: false
-  prerelease: auto
+  prerelease: false

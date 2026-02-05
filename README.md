@@ -4,7 +4,13 @@ A CLI tool to automate AI agent workflows. Define tasks with prompts and verific
 
 ## Installation
 
-### With Nix (recommended)
+### With Go
+
+```bash
+go install github.com/Baitinq/autom8/src@latest
+```
+
+### With Nix
 
 ```bash
 nix develop
