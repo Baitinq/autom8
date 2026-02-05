@@ -32,3 +32,5 @@
 2. describe command maybe should also explain differences between worktrees
 3. accept command fixes merge conflicts
 4. feature vs investigation
+5. when accepting, the worktree status is idle thats weird.
+6. import from todo/jira/beads
