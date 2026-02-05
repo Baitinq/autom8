@@ -183,7 +183,7 @@ autom8 wait my-task     # Wait for a specific task
 autom8 wait --all       # Wait for all in-progress tasks
 ```
 
-When all worktrees for a task finish, **auto-converge** runs automatically to pick the best implementation. The winner is saved to `tasks.json`.
+When all worktrees for a task finish, **auto-converge** runs automatically to pick the best implementation. The winner is saved to `tasks.json`. Use `--auto-accept` to automatically merge the winner (local only, no push).
 
 Use `autom8 describe <task>` to see task details including:
 - The winning implementation (if auto-converge ran)

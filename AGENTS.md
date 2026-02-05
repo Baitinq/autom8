@@ -163,6 +163,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 - `-m <iterations>` - Maximum iterations per worktree (default: unlimited)
 - `--add` - Add more implementations to an existing task (allows in-progress tasks)
 - `--resume` - Restart workers for worktrees in error state (ignores `-n`)
+- `--auto-accept` - Automatically accept (merge) the winning worktree after auto-converge completes (local merge only, no push)
 
 When all worktrees for a task finish, auto-converge runs automatically to pick the best implementation. The winner is saved to `tasks.json`.
 

@@ -94,6 +94,9 @@ autom8 implement --resume
 
 # Resume error worktrees for a specific task
 autom8 implement my-task --resume
+
+# Auto-accept the winner after auto-converge (local merge only)
+autom8 implement --auto-accept
 ```
 
 Each task gets its own git worktree in `.autom8/internal/worktrees/`. Tasks with dependencies branch from their dependency's branch.
