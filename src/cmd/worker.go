@@ -95,8 +95,12 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	task := tasks[taskIndex]
 
-	// Load the implementer agent template
-	agentTemplate, err := loadAgentTemplate("implementer")
+	// Load the appropriate agent template based on task type
+	templateName := "implementer"
+	if task.GetType() == core.TaskTypeInvestigation {
+		templateName = "investigator"
+	}
+	agentTemplate, err := loadAgentTemplate(templateName)
 	if err != nil {
 		agentTemplate = ""
 	}
@@ -105,6 +109,10 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	var promptBuilder strings.Builder
 	if agentTemplate != "" {
 		promptBuilder.WriteString(agentTemplate)
+	}
+	// For investigation tasks, include the task ID so the agent knows the output path
+	if task.GetType() == core.TaskTypeInvestigation {
+		promptBuilder.WriteString(fmt.Sprintf("**Task ID:** %s\n\n", task.ID))
 	}
 	promptBuilder.WriteString(task.Prompt)
 	if len(task.VerificationCriteria) > 0 {
@@ -532,14 +540,22 @@ func extractTextFromStreamJSON(line string) string {
 func buildReviewPrompt(task core.Task, worktreePath, baseBranch string) (string, error) {
 	var sb strings.Builder
 
-	// Load reviewer template
-	reviewerTemplate, err := loadAgentTemplate("reviewer")
+	// Load the appropriate reviewer template based on task type
+	templateName := "reviewer"
+	if task.GetType() == core.TaskTypeInvestigation {
+		templateName = "investigation-reviewer"
+	}
+	reviewerTemplate, err := loadAgentTemplate(templateName)
 	if err != nil {
 		return "", fmt.Errorf("failed to load reviewer template: %w", err)
 	}
 
 	sb.WriteString(reviewerTemplate)
 	sb.WriteString("\n")
+	// For investigation tasks, include the task ID
+	if task.GetType() == core.TaskTypeInvestigation {
+		sb.WriteString(fmt.Sprintf("**Task ID:** %s\n\n", task.ID))
+	}
 	sb.WriteString(task.Prompt)
 	sb.WriteString("\n\n")
 
@@ -559,7 +575,11 @@ func buildReviewPrompt(task core.Task, worktreePath, baseBranch string) (string,
 		return "", fmt.Errorf("failed to get diff: %w", err)
 	}
 
-	sb.WriteString("## Implementation Diff\n\n")
+	if task.GetType() == core.TaskTypeInvestigation {
+		sb.WriteString("## Investigation Changes\n\n")
+	} else {
+		sb.WriteString("## Implementation Diff\n\n")
+	}
 	sb.WriteString("```diff\n")
 	sb.WriteString(string(diffOutput))
 	sb.WriteString("```\n")

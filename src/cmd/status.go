@@ -100,7 +100,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 		// Print task header: name at top, prompt below
 		displayPrompt := core.Truncate(task.Prompt, 50)
-		fmt.Printf("%s%s%s %s %s\n", prefix, branch, statusBadge, SubtitleStyle.Render("Name:"), NameStyle.Render(task.ID))
+		// Show type badge for investigation tasks
+		typeBadge := ""
+		if task.GetType() == core.TaskTypeInvestigation {
+			typeBadge = HighlightStyle.Render("[investigation]") + " "
+		}
+		fmt.Printf("%s%s%s %s%s %s\n", prefix, branch, statusBadge, typeBadge, SubtitleStyle.Render("Name:"), NameStyle.Render(task.ID))
 		fmt.Printf("%s%s %s\n", childPrefix, SubtitleStyle.Render("Prompt:"), displayPrompt)
 
 		// Print verification criteria

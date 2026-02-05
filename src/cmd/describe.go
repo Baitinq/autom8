@@ -91,6 +91,10 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Name:"), NameStyle.Render(task.ID))
+	// Show type for investigation tasks
+	if task.GetType() == core.TaskTypeInvestigation {
+		fmt.Printf("  %s %s\n", SubtitleStyle.Render("Type:"), HighlightStyle.Render("investigation"))
+	}
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Status:"), statusBadge)
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Created:"), task.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Println()

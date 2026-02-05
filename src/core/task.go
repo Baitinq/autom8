@@ -13,20 +13,37 @@ import (
 )
 
 const (
-	Autom8Dir   = ".autom8"
-	InternalDir = "internal"
-	TasksFile   = "tasks.json"
-	PidsFile    = "pids.json"
+	Autom8Dir         = ".autom8"
+	InternalDir       = "internal"
+	InvestigationsDir = "investigations"
+	TasksFile         = "tasks.json"
+	PidsFile          = "pids.json"
 )
 
 type Task struct {
 	ID                   string     `json:"id"`
+	Type                 TaskType   `json:"type,omitempty"` // "implementation" (default) or "investigation"
 	Prompt               string     `json:"prompt"`
 	VerificationCriteria []string   `json:"verification_criteria"`
 	DependsOn            string     `json:"depends_on,omitempty"`
 	CreatedAt            time.Time  `json:"created_at"`
 	Status               TaskStatus `json:"status"`
 	Winner               string     `json:"winner,omitempty"` // Winning worktree name from converge
+}
+
+type TaskType string
+
+const (
+	TaskTypeImplementation TaskType = "implementation"
+	TaskTypeInvestigation  TaskType = "investigation"
+)
+
+// GetType returns the task type, defaulting to "implementation" if not set.
+func (t *Task) GetType() TaskType {
+	if t.Type == "" {
+		return TaskTypeImplementation
+	}
+	return t.Type
 }
 
 type TaskStatus string
@@ -71,6 +88,28 @@ func GetInternalDir() (string, error) {
 		return "", err
 	}
 	return filepath.Join(autom8Dir, InternalDir), nil
+}
+
+// GetInvestigationsDir returns the path to the investigations directory (.autom8/investigations/).
+// This directory stores output from investigation-type tasks.
+func GetInvestigationsDir() (string, error) {
+	autom8Dir, err := GetAutom8Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(autom8Dir, InvestigationsDir), nil
+}
+
+// EnsureInvestigationsDir ensures the investigations directory exists and returns its path.
+func EnsureInvestigationsDir() (string, error) {
+	dir, err := GetInvestigationsDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 func EnsureAutom8Dir() (string, error) {

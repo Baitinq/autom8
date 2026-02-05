@@ -23,6 +23,7 @@ It enables you to:
 
 func init() {
 	rootCmd.AddCommand(cmd.NewCmd)
+	rootCmd.AddCommand(cmd.InvestigateCmd)
 	rootCmd.AddCommand(cmd.ImplementCmd)
 	rootCmd.AddCommand(cmd.StatusCmd)
 	rootCmd.AddCommand(cmd.AcceptCmd)
