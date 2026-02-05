@@ -39,6 +39,7 @@ func init() {
 	rootCmd.AddCommand(cmd.CompleteCmd)
 	rootCmd.AddCommand(cmd.PrCmd)
 	rootCmd.AddCommand(cmd.WaitCmd)
+	rootCmd.AddCommand(cmd.ImportCmd)
 }
 
 func main() {
