@@ -242,6 +242,9 @@ func runImplement(cmd *cobra.Command, args []string) error {
 				if task.Status == core.TaskStatusCompleted {
 					return fmt.Errorf("task '%s' is already completed", targetTaskID)
 				}
+				if task.Status == core.TaskStatusDraft {
+					return fmt.Errorf("task '%s' is a draft (missing prompt/criteria). Use 'autom8 edit %s' to complete it", targetTaskID, targetTaskID)
+				}
 				if task.Status == core.TaskStatusInProgress && !addMode {
 					// For in-progress without --add, it's allowed (continue existing behavior)
 				}

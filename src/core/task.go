@@ -49,9 +49,10 @@ func (t *Task) GetType() TaskType {
 type TaskStatus string
 
 const (
-	TaskStatusPending    TaskStatus = "pending"
-	TaskStatusInProgress TaskStatus = "in-progress"
-	TaskStatusCompleted  TaskStatus = "completed"
+	TaskStatusDraft      TaskStatus = "draft"       // task needs definition (missing prompt/criteria)
+	TaskStatusPending    TaskStatus = "pending"     // fully defined, ready to implement
+	TaskStatusInProgress TaskStatus = "in-progress" // implementation in progress
+	TaskStatusCompleted  TaskStatus = "completed"   // task completed
 )
 
 func FindTaskIndex(tasks []Task, id string) int {

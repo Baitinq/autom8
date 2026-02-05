@@ -218,6 +218,13 @@ func runEdit(cmd *cobra.Command, args []string) error {
 	tasks[taskIndex].VerificationCriteria = criteria
 	tasks[taskIndex].DependsOn = dependsOn
 
+	// Promote draft task to pending if now fully defined
+	if tasks[taskIndex].Status == core.TaskStatusDraft {
+		if strings.TrimSpace(prompt) != "" && len(criteria) > 0 {
+			tasks[taskIndex].Status = core.TaskStatusPending
+		}
+	}
+
 	// Update any tasks that depend on the old name
 	if name != taskID {
 		for i := range tasks {

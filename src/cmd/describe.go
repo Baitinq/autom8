@@ -80,6 +80,8 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	// Status badge
 	var statusBadge string
 	switch task.Status {
+	case core.TaskStatusDraft:
+		statusBadge = StatusDraftStyle.Render("[draft]")
 	case core.TaskStatusPending:
 		statusBadge = StatusPendingStyle.Render("[pending]")
 	case core.TaskStatusInProgress:
@@ -167,6 +169,9 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 				fmt.Printf("      %s autom8 accept %s\n", HighlightStyle.Render("→"), wt.Name)
 			}
 		}
+	} else if task.Status == core.TaskStatusDraft {
+		fmt.Println(SubtitleStyle.Render("  Worktrees:"))
+		fmt.Printf("    (draft - run 'autom8 edit %s' to complete)\n", task.ID)
 	} else if task.Status == core.TaskStatusPending {
 		fmt.Println(SubtitleStyle.Render("  Worktrees:"))
 		fmt.Println("    (none - run 'autom8 implement' to start)")

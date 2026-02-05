@@ -204,13 +204,19 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	// Convert to core.Task and append
 	for _, t := range validTasks {
+		// Determine status: draft if incomplete, pending if fully defined
+		status := core.TaskStatusPending
+		if strings.TrimSpace(t.Prompt) == "" || len(t.Criteria) == 0 {
+			status = core.TaskStatusDraft
+		}
+
 		task := core.Task{
 			ID:                   t.Name,
 			Prompt:               t.Prompt,
 			VerificationCriteria: t.Criteria,
 			DependsOn:            t.DependsOn,
 			CreatedAt:            time.Now(),
-			Status:               core.TaskStatusPending,
+			Status:               status,
 		}
 		existingTasks = append(existingTasks, task)
 	}

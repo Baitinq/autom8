@@ -19,6 +19,10 @@ var (
 	ErrorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196"))
 
+	StatusDraftStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("220")).
+				Bold(true)
+
 	StatusPendingStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("214")).
 				Bold(true)
