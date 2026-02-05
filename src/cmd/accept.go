@@ -206,12 +206,6 @@ func runAccept(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	logsDir, _ := core.GetLogsDir()
-	statusPath := filepath.Join(logsDir, worktreeName, core.WorktreeStatusFile)
-	if err := os.Remove(statusPath); err != nil && !os.IsNotExist(err) {
-		fmt.Printf("%s could not clear worktree status: %v\n", ErrorStyle.Render("Warning:"), err)
-	}
-
 	fmt.Println()
 	fmt.Println(SuccessStyle.Render(fmt.Sprintf("Successfully accepted worktree '%s'", worktreeName)))
 	return nil
