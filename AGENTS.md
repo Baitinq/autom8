@@ -38,6 +38,7 @@ autom8/
 │       ├── accept.go        # AcceptCmd + runAccept
 │       ├── delete.go        # DeleteCmd + runDelete
 │       ├── prune.go         # PruneCmd + runPrune
+│       ├── import.go        # ImportCmd + runImport (AI-based task parsing)
 │       ├── inspect.go       # InspectCmd + runInspect
 │       ├── investigate.go   # InvestigateCmd + runInvestigate
 │       ├── describe.go      # DescribeCmd + runDescribe
@@ -115,6 +116,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 |---------|-------------|
 | `autom8 new` | Create a new implementation task (interactive or via flags) |
 | `autom8 investigate` | Create a new investigation task (interactive or via flags) |
+| `autom8 import [file]` | Import tasks from any text format using AI |
 | `autom8 status` | Display all tasks with status (alias: `list`, `ls`) |
 | `autom8 implement -n N` | Run N parallel agents per task; auto-converge picks winner when all finish |
 | `autom8 wait` | Wait for worktrees to complete (blocks until ready/idle) |
@@ -142,6 +144,10 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 - `-n <name>` - Task name (unique identifier, e.g., `debug-flaky-test`)
 - `-p <prompt>` - Investigation question/goal (non-interactive)
 - `-c <criterion>` - Success criterion (repeatable)
+
+**`autom8 import [file]`**:
+- `[file]` - Optional file to import from (reads from stdin if omitted)
+- `-y, --yes` - Skip confirmation prompt (required when reading from stdin)
 
 **`autom8 edit <task-name>`**:
 - `-n <name>` - Rename the task

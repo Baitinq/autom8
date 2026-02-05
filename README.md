@@ -58,6 +58,22 @@ autom8 investigate -n debug-flaky-test -p "Why is TestFoo flaky?"
 autom8 investigate -n auth-flow -p "How does auth work?" -c "Document the flow" -c "List all auth endpoints"
 ```
 
+### Import tasks from any format
+
+Use AI to parse tasks from markdown, bullets, prose, Jira output, or any text format.
+
+```bash
+# Import from file
+autom8 import TODO.md
+autom8 import tasks.txt
+
+# Import from stdin (requires -y flag)
+cat tasks.md | autom8 import -y
+jira-cli list | autom8 import -y
+```
+
+The AI will extract tasks, infer dependencies, and skip tasks that already exist.
+
 ### List tasks
 
 ```bash

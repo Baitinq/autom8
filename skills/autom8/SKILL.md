@@ -70,6 +70,7 @@ Once you've discussed the feature enough and the user confirms they're ready to 
 
 - **Implementation tasks** (`autom8 new`) - For building features, fixing bugs, or making code changes
 - **Investigation tasks** (`autom8 investigate`) - For understanding, debugging, or researching code
+- **Bulk import** (`autom8 import`) - For importing multiple tasks from any text format using AI
 
 ```bash
 # Implementation task
@@ -123,6 +124,20 @@ autom8 investigate \
   -c "Documented reproduction steps" \
   -c "Proposed fix approach"
 ```
+
+## Importing Tasks
+
+For bulk importing tasks from any text format (markdown, bullets, prose, Jira output, etc.):
+
+```bash
+# Import from file
+autom8 import TODO.md
+
+# Import from stdin (requires -y flag)
+cat tasks.md | autom8 import -y
+```
+
+The AI parses the input, extracts tasks with names/prompts/criteria, infers dependencies, and skips tasks that already exist.
 
 ## Editing Tasks
 
