@@ -46,10 +46,12 @@ autom8/
 │       ├── show.go          # ShowCmd + runShow + pipeToLess
 │       ├── chat.go          # ChatCmd + runChat + buildChatSystemPrompt
 │       ├── pr.go            # PrCmd + runPr + buildPrSystemPrompt
+│       ├── review.go        # ReviewCmd + runReview + code review convergence
 │       └── agents/          # Embedded agent templates (compiled into binary)
 │           ├── implementer.md
 │           ├── reviewer.md
-│           └── converger.md
+│           ├── converger.md
+│           └── code-reviewer.md
 ├── flake.nix                # Nix flake for dev environment & build
 ├── flake.lock               # Pinned Nix dependencies
 ├── go.mod                   # Go module definition
@@ -131,6 +133,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | `autom8 show <worktree>` | Show diff between default branch and worktree |
 | `autom8 logs <worktree>` | Stream implementation/review logs for a worktree |
 | `autom8 chat <worktree>` | Interactive Claude session in worktree |
+| `autom8 review [PR#\|branch]` | Run parallel code reviewers on a PR or branch (defaults to codex) |
 
 ### Flag Reference
 
@@ -169,6 +172,12 @@ When all worktrees for a task finish, auto-converge runs automatically to pick t
 
 **`autom8 pr`**:
 - `autom8 pr <worktree>` - Create a draft PR for the specified worktree
+
+**`autom8 review`**:
+- `[PR#|branch]` - Optional PR number or branch to review (defaults to current branch)
+- `-n <count>` - Number of parallel reviewers (default: 1)
+
+The reviewer tool defaults to `codex` (configurable via `.autom8/config.json`).
 
 ## Code Organization
 

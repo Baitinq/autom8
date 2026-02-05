@@ -24,7 +24,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Implementer: ToolConfig{Tool: "claude"},
-		Reviewer:    ToolConfig{Tool: "claude"},
+		Reviewer:    ToolConfig{Tool: "codex"},
 	}
 }
 
@@ -55,7 +55,7 @@ func LoadConfig() (Config, error) {
 		cfg.Implementer.Tool = "claude"
 	}
 	if cfg.Reviewer.Tool == "" {
-		cfg.Reviewer.Tool = "claude"
+		cfg.Reviewer.Tool = "codex"
 	}
 
 	return cfg, nil

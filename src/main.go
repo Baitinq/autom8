@@ -40,6 +40,7 @@ func init() {
 	rootCmd.AddCommand(cmd.PrCmd)
 	rootCmd.AddCommand(cmd.WaitCmd)
 	rootCmd.AddCommand(cmd.ImportCmd)
+	rootCmd.AddCommand(cmd.ReviewCmd)
 }
 
 func main() {

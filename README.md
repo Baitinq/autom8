@@ -156,6 +156,24 @@ autom8 done my-task
 
 Use this when a task is finished without accepting a worktree (for example, you implemented it manually).
 
+### Run code reviews
+
+```bash
+# Review current branch vs main
+autom8 review
+
+# Review a specific PR
+autom8 review 123
+
+# Review a specific branch
+autom8 review feature-branch
+
+# Run 3 parallel reviewers
+autom8 review -n 3
+```
+
+Multiple reviewers analyze the changes in parallel, then results are consolidated into a deduplicated, severity-sorted list of issues.
+
 ### Cleanup completed tasks
 
 ```bash
@@ -166,7 +184,7 @@ Prune removes completed tasks and cleans up their worktrees/logs.
 
 ## Configuration
 
-Create `.autom8/config.json` to select the implementer and reviewer tools/models. This file is optional; defaults are `claude` for both.
+Create `.autom8/config.json` to select the implementer and reviewer tools/models. This file is optional; defaults are `claude` for implementer and `codex` for reviewer.
 
 Example:
 ```json

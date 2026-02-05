@@ -31,3 +31,6 @@ Learning: All application logic lives in src/main.go. This is intentional for si
 Added: 2026-02-01
 Context: When updating agent prompts
 Learning: Agent templates in src/agents/*.md are embedded into the binary at build time via Go embed. Changes require rebuild.
+
+## 2026-02-05: Default configuration values
+When config values need defaults, set them both in DefaultConfig() AND in LoadConfig() fallback logic to handle partial config files. The reviewer defaulting to "codex" is set in both places to ensure consistent behavior.

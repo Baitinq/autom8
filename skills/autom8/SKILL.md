@@ -52,7 +52,7 @@ Check which to use by running `which autom8` first. Use the binary if available 
 
 ## Configuration
 
-Users can optionally create `.autom8/config.json` to choose implementer/reviewer tools and models. Defaults are `claude` for both.
+Users can optionally create `.autom8/config.json` to choose implementer/reviewer tools and models. Defaults are `claude` for implementer and `codex` for reviewer.
 
 Example:
 ```json
@@ -198,6 +198,26 @@ autom8 pr <worktree>
 ```
 
 This uses `gh pr create --draft`, so the GitHub CLI must be installed and authenticated.
+
+## Code Reviews
+
+Run parallel code reviewers on a PR or branch:
+
+```bash
+# Review current branch vs main
+autom8 review
+
+# Review a specific PR
+autom8 review 123
+
+# Review a specific branch
+autom8 review feature-branch
+
+# Run 3 parallel reviewers
+autom8 review -n 3
+```
+
+Multiple reviewers analyze the changes in parallel, then results are consolidated into a deduplicated, severity-sorted list of issues. The reviewer tool defaults to `codex` (configurable via `.autom8/config.json`).
 
 ## Cleanup
 
