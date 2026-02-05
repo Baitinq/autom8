@@ -696,6 +696,9 @@ func tryAutoConverge(taskID, worktreeName, logsDir string) {
 	}
 
 	logMsg("auto-converge complete, winner saved to tasks.json")
+
+	// Extract learnings and append to memory.md
+	extractMemoryLearnings(task, readyWorktrees, result.Winner, gitRoot, logMsg)
 }
 
 // acquireConvergeLock attempts to create an exclusive lock file.
@@ -717,4 +720,191 @@ func releaseConvergeLock(lockFile string, fd *os.File) {
 		fd.Close()
 	}
 	os.Remove(lockFile)
+}
+
+// extractMemoryLearnings calls AI to extract general learnings from the completed task
+// and appends them to .autom8/memory.md if valuable insights are found.
+func extractMemoryLearnings(task core.Task, worktrees []core.WorktreeInfo, winner string, gitRoot string, logMsg func(string, ...interface{})) {
+	logMsg("extracting learnings for memory.md...")
+
+	// Find the winning worktree
+	var winnerPath string
+	for _, wt := range worktrees {
+		if wt.Name == winner {
+			winnerPath = wt.Path
+			break
+		}
+	}
+
+	if winnerPath == "" {
+		logMsg("could not find winner worktree path")
+		return
+	}
+
+	// Get the diff from the winning implementation
+	diffCmd := exec.Command("git", "-C", winnerPath, "diff", "@{u}...HEAD")
+	diffOutput, err := diffCmd.Output()
+	if err != nil || len(diffOutput) == 0 {
+		logMsg("could not get diff for learning extraction")
+		return
+	}
+
+	// Build prompt for learning extraction
+	prompt := buildMemoryExtractionPrompt(task, string(diffOutput))
+
+	// Run claude to extract learnings
+	claudeCmd := exec.Command("claude", "-p", "-", "--output-format", "json")
+	claudeCmd.Dir = gitRoot
+	claudeCmd.Stdin = strings.NewReader(prompt)
+
+	output, err := claudeCmd.Output()
+	if err != nil {
+		logMsg("failed to run AI for learning extraction: %v", err)
+		return
+	}
+
+	// Parse the response
+	learning := parseMemoryLearningResponse(string(output))
+	if learning == nil {
+		logMsg("no valuable learnings extracted (this is fine)")
+		return
+	}
+
+	// Append to memory.md
+	autom8Dir, err := core.GetAutom8Dir()
+	if err != nil {
+		logMsg("failed to get autom8 dir: %v", err)
+		return
+	}
+
+	memoryPath := filepath.Join(autom8Dir, "memory.md")
+	appendLearningToMemory(memoryPath, learning, logMsg)
+}
+
+func buildMemoryExtractionPrompt(task core.Task, diff string) string {
+	var sb strings.Builder
+
+	sb.WriteString("You are analyzing a completed implementation task to extract general learnings.\n\n")
+	sb.WriteString("## Task\n\n")
+	sb.WriteString(task.Prompt)
+	sb.WriteString("\n\n")
+
+	if len(task.VerificationCriteria) > 0 {
+		sb.WriteString("## Verification Criteria\n\n")
+		for _, c := range task.VerificationCriteria {
+			sb.WriteString(fmt.Sprintf("- %s\n", c))
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("## Winning Implementation Diff\n\n")
+	sb.WriteString("```diff\n")
+	// Truncate if too large
+	if len(diff) > 30000 {
+		diff = diff[:30000] + "\n... (truncated)"
+	}
+	sb.WriteString(diff)
+	sb.WriteString("\n```\n\n")
+
+	sb.WriteString("## Your Task\n\n")
+	sb.WriteString("Extract any general learnings from this implementation that would be valuable for future tasks.\n\n")
+	sb.WriteString("Guidelines:\n")
+	sb.WriteString("- Focus on patterns, anti-patterns, or insights about this codebase\n")
+	sb.WriteString("- Should be general principles, NOT task-specific details\n")
+	sb.WriteString("- Keep it concise (1-3 sentences)\n")
+	sb.WriteString("- If there's no meaningful learning worth persisting, output NONE\n\n")
+	sb.WriteString("Output format:\n")
+	sb.WriteString("<output>LEARNING: <brief topic> | <1-3 sentence general insight></output>\n")
+	sb.WriteString("OR\n")
+	sb.WriteString("<output>NONE</output>\n\n")
+	sb.WriteString("The brief topic should be 2-4 words describing the category (e.g., \"PTY streaming\", \"Config loading\", \"Test patterns\").\n\n")
+	sb.WriteString("Examples of good learnings:\n")
+	sb.WriteString("- \"API conventions | Endpoints follow RESTful conventions with /api/v1 prefix. All handlers return JSON with {data, error} structure.\"\n")
+	sb.WriteString("- \"Config loading | Configuration is loaded once at startup via core.LoadConfig(). Don't reload during request handling.\"\n")
+	sb.WriteString("- \"Test patterns | Tests use table-driven pattern with subtests. Each test case should include name, input, and expected fields.\"\n\n")
+	sb.WriteString("Examples of what NOT to add:\n")
+	sb.WriteString("- Task-specific details like \"Added validation to the login form\"\n")
+	sb.WriteString("- Obvious things like \"Functions should have descriptive names\"\n")
+	sb.WriteString("- One-off fixes like \"Fixed typo in error message\"\n")
+
+	return sb.String()
+}
+
+// memoryLearning holds the parsed topic and content from AI response.
+type memoryLearning struct {
+	Topic   string
+	Content string
+}
+
+func parseMemoryLearningResponse(response string) *memoryLearning {
+	// Try to parse JSON response first
+	var jsonResp struct {
+		Result string `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(response), &jsonResp); err == nil {
+		response = jsonResp.Result
+	}
+
+	// Check for NONE output
+	if strings.Contains(response, "<output>NONE</output>") {
+		return nil
+	}
+
+	// Look for "<output>LEARNING: topic | content</output>" pattern
+	if start := strings.Index(response, "<output>LEARNING:"); start != -1 {
+		start += len("<output>LEARNING:")
+		if end := strings.Index(response[start:], "</output>"); end != -1 {
+			learningText := strings.TrimSpace(response[start : start+end])
+			// Split by | to get topic and content
+			if idx := strings.Index(learningText, "|"); idx != -1 {
+				return &memoryLearning{
+					Topic:   strings.TrimSpace(learningText[:idx]),
+					Content: strings.TrimSpace(learningText[idx+1:]),
+				}
+			}
+			// Fallback: no separator, use "General" as topic
+			return &memoryLearning{
+				Topic:   "General",
+				Content: learningText,
+			}
+		}
+	}
+
+	return nil
+}
+
+func appendLearningToMemory(memoryPath string, learning *memoryLearning, logMsg func(string, ...interface{})) {
+	// Create the file if it doesn't exist with header
+	if _, err := os.Stat(memoryPath); os.IsNotExist(err) {
+		header := `# Agent Memory
+
+This file stores persistent learnings that agents can reference across sessions.
+
+---
+
+`
+		if err := os.WriteFile(memoryPath, []byte(header), 0644); err != nil {
+			logMsg("failed to create memory.md: %v", err)
+			return
+		}
+	}
+
+	// Format the entry: ## <date>: <brief topic>
+	date := time.Now().Format("2006-01-02")
+	entry := fmt.Sprintf("\n## %s: %s\n%s\n", date, learning.Topic, learning.Content)
+
+	// Append to file
+	f, err := os.OpenFile(memoryPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		logMsg("failed to open memory.md: %v", err)
+		return
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(entry); err != nil {
+		logMsg("failed to write to memory.md: %v", err)
+		return
+	}
+
+	logMsg("learning appended to memory.md")
 }
