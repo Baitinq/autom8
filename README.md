@@ -2,6 +2,10 @@
 
 A CLI tool to automate AI agent workflows. Define tasks with prompts and verification criteria, then let AI implement them in parallel git worktrees.
 
+<p align="center">
+  <img src="docs/architecture.png" alt="autom8 Architecture" width="700">
+</p>
+
 ## Installation
 
 ### With Go
