@@ -134,6 +134,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | `autom8 logs <worktree>` | Stream implementation/review logs for a worktree |
 | `autom8 chat <worktree>` | Interactive Claude session in worktree |
 | `autom8 review [PR#\|branch]` | Run parallel code reviewers on a PR or branch (defaults to codex) |
+| `autom8 version` | Print the autom8 version |
 
 ### Flag Reference
 

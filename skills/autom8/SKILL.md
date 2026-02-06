@@ -48,6 +48,11 @@ go run ${CLAUDE_PLUGIN_ROOT}/src <command> [flags]
 autom8 <command> [flags]
 ```
 
+Check the installed version when needed:
+```bash
+autom8 version
+```
+
 Check which to use by running `which go` first. Use `go run` if available, otherwise fall back to the installed binary.
 
 ## Configuration

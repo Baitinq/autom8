@@ -84,6 +84,12 @@ The AI will extract tasks, infer dependencies, and skip tasks that already exist
 autom8 list
 ```
 
+### Show version
+
+```bash
+autom8 version
+```
+
 ### Implement tasks
 
 ```bash

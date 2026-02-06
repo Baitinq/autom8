@@ -21,7 +21,11 @@ It enables you to:
 	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 }
 
+// VERSION can be overridden at build time via -ldflags "-X main.VERSION=..."
+var VERSION = "dev"
+
 func init() {
+	cmd.Version = VERSION
 	rootCmd.AddCommand(cmd.NewCmd)
 	rootCmd.AddCommand(cmd.InvestigateCmd)
 	rootCmd.AddCommand(cmd.ImplementCmd)
@@ -41,6 +45,7 @@ func init() {
 	rootCmd.AddCommand(cmd.WaitCmd)
 	rootCmd.AddCommand(cmd.ImportCmd)
 	rootCmd.AddCommand(cmd.ReviewCmd)
+	rootCmd.AddCommand(cmd.VersionCmd)
 }
 
 func main() {
