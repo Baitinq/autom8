@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/logo.png" alt="autom8" width="120">
-</p>
-
 # autom8
 
 A CLI tool to automate AI agent workflows. Define tasks with prompts and verification criteria, then let AI implement them in parallel git worktrees.
@@ -11,6 +7,18 @@ A CLI tool to automate AI agent workflows. Define tasks with prompts and verific
 </p>
 
 ## Installation
+
+### Claude Code Skill (Recommended)
+
+The easiest way to use autom8 is through the Claude Code skill. Add the skill to your project:
+
+```bash
+# From your project directory
+mkdir -p .claude/skills
+git clone https://github.com/Baitinq/autom8 .claude/skills/autom8
+```
+
+Then use `/autom8` in Claude Code to interactively design and create tasks.
 
 ### With Go
 
