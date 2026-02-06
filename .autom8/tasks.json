@@ -22,28 +22,5 @@
     ],
     "created_at": "2026-02-01T18:05:55.638932+01:00",
     "status": "pending"
-  },
-  {
-    "id": "move-pids-internal",
-    "prompt": "Move pids.json into .autom8/internal so all ephemeral data lives under internal. Update LoadPids/SavePids to read/write from .autom8/internal/pids.json. Keep behavior the same otherwise.",
-    "verification_criteria": [
-      "pids.json is stored under .autom8/internal/",
-      "go build succeeds"
-    ],
-    "created_at": "2026-02-04T17:16:57.93755+01:00",
-    "status": "completed"
-  },
-  {
-    "id": "fix-review-command",
-    "prompt": "Fix review command defaults/output logging and keep docs in sync. Ensure reviewer tool defaults to codex when not configured, each reviewer writes its parsed ReviewResult JSON to the temp output file, and consolidated issues are deduplicated and sorted by severity even after AI convergence. Update README.md, CLAUDE.md, and .claude/skills/autom8/SKILL.md to include the review command and any updated reviewer default.",
-    "verification_criteria": [
-      "Review command defaults reviewer tool to codex when not configured",
-      "Each reviewer writes its parsed ReviewResult JSON to a temp output file",
-      "Consolidated review output is deduplicated and ordered by severity",
-      "README.md, CLAUDE.md, and .claude/skills/autom8/SKILL.md document the review command and reviewer default"
-    ],
-    "created_at": "2026-02-05T19:57:20.24318+01:00",
-    "status": "completed",
-    "winner": "fix-review-command-1"
   }
 ]
