@@ -38,17 +38,17 @@ The goal is a well-defined task that an implementation agent can execute without
 
 ## Running autom8
 
-**Preferred**: If `autom8` is in PATH, use it directly:
-```bash
-autom8 <command> [flags]
-```
-
-**Fallback**: If not installed, run from source (requires Go):
+**Preferred**: Run from source to always use the latest code:
 ```bash
 go run ${CLAUDE_PLUGIN_ROOT}/src <command> [flags]
 ```
 
-Check which to use by running `which autom8` first. Use the binary if available (faster), otherwise fall back to `go run`.
+**Fallback**: If Go is not installed, use the binary (may be outdated):
+```bash
+autom8 <command> [flags]
+```
+
+Check which to use by running `which go` first. Use `go run` if available, otherwise fall back to the installed binary.
 
 ## Configuration
 
