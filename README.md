@@ -8,14 +8,16 @@ A CLI tool to automate AI agent workflows. Define tasks with prompts and verific
 
 ## Installation
 
-### Claude Code Skill (Recommended)
+### Claude Code Plugin (Recommended)
 
-The easiest way to use autom8 is through the Claude Code skill. Add the skill to your project:
+The easiest way to use autom8 is through the Claude Code plugin marketplace:
 
-```bash
-# From your project directory
-mkdir -p .claude/skills
-git clone https://github.com/Baitinq/autom8 .claude/skills/autom8
+```shell
+# Add the marketplace
+/plugin marketplace add Baitinq/autom8
+
+# Install the plugin
+/plugin install autom8@baitinq-autom8
 ```
 
 Then use `/autom8` in Claude Code to interactively design and create tasks.
@@ -24,20 +26,6 @@ Then use `/autom8` in Claude Code to interactively design and create tasks.
 
 ```bash
 go install github.com/Baitinq/autom8/src@latest
-```
-
-### With Nix
-
-```bash
-nix develop
-# or with direnv
-direnv allow
-```
-
-### Build from source
-
-```bash
-go build -o autom8 ./src
 ```
 
 ## Usage
