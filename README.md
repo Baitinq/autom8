@@ -20,7 +20,7 @@ The easiest way to use autom8 is through the Claude Code plugin marketplace:
 /plugin install autom8@baitinq-autom8
 ```
 
-Then use `/autom8` in Claude Code to interactively design and create tasks.
+Once installed, just ask Claude to create an autom8 task and it will use the skill automatically.
 
 ### With Go
 
