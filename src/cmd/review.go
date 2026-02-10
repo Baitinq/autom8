@@ -255,35 +255,25 @@ func parseReviewOutput(output string) (ReviewResult, error) {
 	var jsonResp struct {
 		Result string `json:"result"`
 	}
-	if err := json.Unmarshal([]byte(output), &jsonResp); err == nil {
+	if err := json.Unmarshal([]byte(output), &jsonResp); err == nil && jsonResp.Result != "" {
 		output = jsonResp.Result
 	}
 
-	// Look for <output>REVIEW: {...}</output> pattern
+	// Find any JSON object in the output by locating first '{' and last '}'
 	var result ReviewResult
 
-	start := strings.Index(output, "<output>")
-	end := strings.LastIndex(output, "</output>")
+	start := strings.Index(output, "{")
+	end := strings.LastIndex(output, "}")
 
 	if start != -1 && end != -1 && end > start {
-		content := strings.TrimSpace(output[start+len("<output>") : end])
-
-		// Check if it starts with "REVIEW:"
-		if strings.HasPrefix(content, "REVIEW:") {
-			content = strings.TrimPrefix(content, "REVIEW:")
-			content = strings.TrimSpace(content)
+		jsonStr := output[start : end+1]
+		if err := json.Unmarshal([]byte(jsonStr), &result); err == nil {
+			return result, nil
 		}
-
-		// Parse the JSON
-		if err := json.Unmarshal([]byte(content), &result); err != nil {
-			// If JSON parsing fails, try to extract something useful
-			result.Summary = content
-		}
-	} else {
-		// Fallback: treat the whole output as a summary
-		result.Summary = strings.TrimSpace(output)
 	}
 
+	// Fallback: treat the whole output as a summary
+	result.Summary = strings.TrimSpace(output)
 	return result, nil
 }
 
