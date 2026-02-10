@@ -22,5 +22,27 @@
     ],
     "created_at": "2026-02-01T18:05:55.638932+01:00",
     "status": "pending"
+  },
+  {
+    "id": "fix-review-async-docs",
+    "prompt": "Harden review task creation and update docs for async review. Ensure auto-generated review task names are sanitized to task naming rules (alphanumeric, dash, underscore), validated, and cannot include invalid characters from review targets. Clamp reviewer count to at least 1 when creating review tasks. Update README.md, AGENTS.md (CLAUDE.md), and .claude/skills/autom8/SKILL.md to describe the async review flow, review task type, where results are stored, and how to view results (autom8 describe).",
+    "verification_criteria": [
+      "Auto-generated review task names always pass ValidateTaskName even with branch names containing special characters",
+      "reviewer count is normalized to \u003e=1 when creating review tasks",
+      "README.md, AGENTS.md, and .claude/skills/autom8/SKILL.md describe async review flow and viewing results"
+    ],
+    "created_at": "2026-02-10T10:48:45.111743+01:00",
+    "status": "completed",
+    "winner": "fix-review-async-docs-1"
+  },
+  {
+    "id": "fix-review-count-display",
+    "prompt": "Use the normalized reviewer count when printing review task creation output so the displayed reviewer count matches the value stored in tasks.json (clamped to \u003e=1).",
+    "verification_criteria": [
+      "Review command prints normalized reviewer count (\u003e=1) in its output"
+    ],
+    "created_at": "2026-02-10T10:56:47.740599+01:00",
+    "status": "completed",
+    "winner": "fix-review-count-display-1"
   }
 ]

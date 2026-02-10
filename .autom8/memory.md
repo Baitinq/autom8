@@ -34,3 +34,8 @@ Learning: Agent templates in src/agents/*.md are embedded into the binary at bui
 
 ## 2026-02-05: Default configuration values
 When config values need defaults, set them both in DefaultConfig() AND in LoadConfig() fallback logic to handle partial config files. The reviewer defaulting to "codex" is set in both places to ensure consistent behavior.
+
+### [Convention] Task name sanitization
+Added: 2026-02-10
+Context: When generating task names from user-provided input (branch names, PR numbers)
+Learning: Sanitize per character with an allowlist (alphanumeric, dash, underscore), collapse dashes, trim edges, enforce max length, and ensure a non-empty fallback.

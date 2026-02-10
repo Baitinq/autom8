@@ -39,6 +39,7 @@ func init() {
 	rootCmd.AddCommand(cmd.ShowCmd)
 	rootCmd.AddCommand(cmd.ChatCmd)
 	rootCmd.AddCommand(cmd.WorkerCmd)
+	rootCmd.AddCommand(cmd.ReviewWorkerCmd)
 	rootCmd.AddCommand(cmd.LogsCmd)
 	rootCmd.AddCommand(cmd.CompleteCmd)
 	rootCmd.AddCommand(cmd.PrCmd)

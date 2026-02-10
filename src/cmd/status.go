@@ -102,10 +102,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 		// Print task header: name at top, prompt below
 		displayPrompt := core.Truncate(task.Prompt, 50)
-		// Show type badge for investigation tasks
+		// Show type badge for investigation and review tasks
 		typeBadge := ""
 		if task.GetType() == core.TaskTypeInvestigation {
 			typeBadge = HighlightStyle.Render("[investigation]") + " "
+		} else if task.GetType() == core.TaskTypeReview {
+			typeBadge = HighlightStyle.Render("[review]") + " "
 		}
 		fmt.Printf("%s%s%s %s%s %s\n", prefix, branch, statusBadge, typeBadge, SubtitleStyle.Render("Name:"), NameStyle.Render(task.ID))
 		fmt.Printf("%s%s %s\n", childPrefix, SubtitleStyle.Render("Prompt:"), displayPrompt)
@@ -177,6 +179,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 					}
 					fmt.Printf("%s%s autom8 accept %s\n", wtChildPrefix, HighlightStyle.Render("→"), wt.Name)
 				}
+			}
+		} else if task.GetType() == core.TaskTypeReview {
+			// Review tasks don't use worktrees - show appropriate hints
+			if task.Status == core.TaskStatusPending && len(children) == 0 {
+				fmt.Printf("%s%s\n", childPrefix, SubtitleStyle.Render("(pending - run 'autom8 implement')"))
+			} else if task.Status == core.TaskStatusInProgress && len(children) == 0 {
+				fmt.Printf("%s%s\n", childPrefix, SubtitleStyle.Render("(review in progress...)"))
+			} else if task.Status == core.TaskStatusCompleted && len(children) == 0 {
+				fmt.Printf("%s%s\n", childPrefix, SubtitleStyle.Render("(run 'autom8 describe "+task.ID+"' to see results)"))
 			}
 		} else if task.Status == core.TaskStatusDraft && len(children) == 0 {
 			fmt.Printf("%s%s\n", childPrefix, SubtitleStyle.Render("(draft - run 'autom8 edit "+task.ID+"' to complete)"))

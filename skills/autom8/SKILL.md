@@ -206,7 +206,7 @@ This uses `gh pr create --draft`, so the GitHub CLI must be installed and authen
 
 ## Code Reviews
 
-Run parallel code reviewers on a PR or branch:
+Create a review task for a PR or branch:
 
 ```bash
 # Review current branch vs main
@@ -220,9 +220,19 @@ autom8 review feature-branch
 
 # Run 3 parallel reviewers
 autom8 review -n 3
+
+# Specify a custom task name
+autom8 review 123 --name pr-123-review
 ```
 
-Multiple reviewers analyze the changes in parallel, then results are consolidated into a deduplicated, severity-sorted list of issues. The reviewer tool defaults to `codex` (configurable via `.autom8/config.json`).
+The `review` command creates a **review task** and returns immediately (async). Run `autom8 implement` to execute the reviewers. Multiple reviewers analyze the changes in parallel, then results are consolidated into a deduplicated, severity-sorted list of issues.
+
+**Viewing results:**
+- Results are saved to `.autom8/reviews/<task-id>.json`
+- Use `autom8 describe <task-id>` to view issues and their severity
+- Review tasks appear in `autom8 status` alongside implementation tasks
+
+The reviewer tool defaults to `codex` (configurable via `.autom8/config.json`).
 
 ## Cleanup
 

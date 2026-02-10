@@ -183,9 +183,14 @@ autom8 review feature-branch
 
 # Run 3 parallel reviewers
 autom8 review -n 3
+
+# Specify a custom task name
+autom8 review 123 --name pr-123-review
 ```
 
-Multiple reviewers analyze the changes in parallel, then results are consolidated into a deduplicated, severity-sorted list of issues.
+The `review` command creates a **review task** and returns immediately. Run `autom8 implement` to execute the reviewers (they run alongside any pending implementation tasks). Multiple reviewers analyze the changes in parallel, then results are consolidated into a deduplicated, severity-sorted list of issues.
+
+Review results are saved to `.autom8/reviews/<task-id>.json`. Use `autom8 describe <task-id>` to view the results, including issues found and their severity.
 
 ### Cleanup completed tasks
 
@@ -227,6 +232,8 @@ Supported tools: `claude`, `codex`, `opencode`.
 
 - `.autom8/tasks.json` - Task definitions (should be committed)
 - `.autom8/memory.md` - Persistent learnings from past tasks (should be committed)
+- `.autom8/investigations/` - Investigation task outputs (should be committed)
+- `.autom8/reviews/` - Review task results as JSON (should be committed)
 - `.autom8/internal/` - Ephemeral data (gitignored)
   - `worktrees/` - Git worktrees for implementations
   - `logs/` - Per-worktree logs (pruned with completed tasks)

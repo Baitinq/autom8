@@ -16,19 +16,23 @@ const (
 	Autom8Dir         = ".autom8"
 	InternalDir       = "internal"
 	InvestigationsDir = "investigations"
+	ReviewsDir        = "reviews"
 	TasksFile         = "tasks.json"
 	PidsFile          = "pids.json"
 )
 
 type Task struct {
 	ID                   string     `json:"id"`
-	Type                 TaskType   `json:"type,omitempty"` // "implementation" (default) or "investigation"
+	Type                 TaskType   `json:"type,omitempty"` // "implementation", "investigation", or "review"
 	Prompt               string     `json:"prompt"`
 	VerificationCriteria []string   `json:"verification_criteria"`
 	DependsOn            string     `json:"depends_on,omitempty"`
 	CreatedAt            time.Time  `json:"created_at"`
 	Status               TaskStatus `json:"status"`
 	Winner               string     `json:"winner,omitempty"` // Winning worktree name from converge
+	// Review-specific fields
+	ReviewTarget  string `json:"review_target,omitempty"`  // PR# or branch name for review tasks
+	ReviewerCount int    `json:"reviewer_count,omitempty"` // Number of parallel reviewers
 }
 
 type TaskType string
@@ -36,6 +40,7 @@ type TaskType string
 const (
 	TaskTypeImplementation TaskType = "implementation"
 	TaskTypeInvestigation  TaskType = "investigation"
+	TaskTypeReview         TaskType = "review"
 )
 
 // GetType returns the task type, defaulting to "implementation" if not set.
@@ -104,6 +109,28 @@ func GetInvestigationsDir() (string, error) {
 // EnsureInvestigationsDir ensures the investigations directory exists and returns its path.
 func EnsureInvestigationsDir() (string, error) {
 	dir, err := GetInvestigationsDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// GetReviewsDir returns the path to the reviews directory (.autom8/reviews/).
+// This directory stores output from review-type tasks.
+func GetReviewsDir() (string, error) {
+	autom8Dir, err := GetAutom8Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(autom8Dir, ReviewsDir), nil
+}
+
+// EnsureReviewsDir ensures the reviews directory exists and returns its path.
+func EnsureReviewsDir() (string, error) {
+	dir, err := GetReviewsDir()
 	if err != nil {
 		return "", err
 	}

@@ -71,7 +71,7 @@ autom8/
 
 The fundamental data structure (defined in `src/core/task.go`) containing:
 - **ID** - Unique identifier (user-defined name like `add-login-page`, or auto-generated `task-<unix-nano>`)
-- **Type** - Either `implementation` (default) or `investigation`
+- **Type** - `implementation` (default), `investigation`, or `review`
 - **Prompt** - Implementation instruction or investigation question
 - **VerificationCriteria** - List of success criteria
 - **DependsOn** - Optional parent task name
@@ -81,10 +81,11 @@ The fundamental data structure (defined in `src/core/task.go`) containing:
 
 ### Task Types
 
-autom8 supports two types of tasks:
+autom8 supports three types of tasks:
 
 - **Implementation tasks** (default) - For building features, fixing bugs, or making code changes. Created with `autom8 new`. Agents focus on writing and committing code.
 - **Investigation tasks** - For understanding, debugging, or researching code. Created with `autom8 investigate`. Agents focus on exploration and write findings to `.autom8/investigations/<task-id>.md`.
+- **Review tasks** - For code review of PRs or branches. Created with `autom8 review`. Runs parallel reviewers and saves consolidated results to `.autom8/reviews/<task-id>.json`. View results with `autom8 describe <task-id>`.
 
 ### Worktrees
 
@@ -133,7 +134,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | `autom8 show <worktree>` | Show diff between default branch and worktree |
 | `autom8 logs <worktree>` | Stream implementation/review logs for a worktree |
 | `autom8 chat <worktree>` | Interactive Claude session in worktree |
-| `autom8 review [PR#\|branch]` | Run parallel code reviewers on a PR or branch (defaults to codex) |
+| `autom8 review [PR#\|branch]` | Create a review task (async). Run `autom8 implement` to execute reviewers. Results in `.autom8/reviews/` |
 | `autom8 version` | Print the autom8 version |
 
 ### Flag Reference
@@ -178,8 +179,9 @@ When all worktrees for a task finish, auto-converge runs automatically to pick t
 **`autom8 review`**:
 - `[PR#|branch]` - Optional PR number or branch to review (defaults to current branch)
 - `-n <count>` - Number of parallel reviewers (default: 1)
+- `--name <name>` - Custom task name (auto-generated from target if not provided)
 
-The reviewer tool defaults to `codex` (configurable via `.autom8/config.json`).
+Creates a review task and returns immediately. Run `autom8 implement` to execute the reviewers. Results are saved to `.autom8/reviews/<task-id>.json` and can be viewed with `autom8 describe <task-id>`. The reviewer tool defaults to `codex` (configurable via `.autom8/config.json`).
 
 ## Code Organization
 

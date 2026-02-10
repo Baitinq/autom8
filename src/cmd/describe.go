@@ -93,9 +93,13 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Name:"), NameStyle.Render(task.ID))
-	// Show type for investigation tasks
+	// Show type for investigation and review tasks
 	if task.GetType() == core.TaskTypeInvestigation {
 		fmt.Printf("  %s %s\n", SubtitleStyle.Render("Type:"), HighlightStyle.Render("investigation"))
+	} else if task.GetType() == core.TaskTypeReview {
+		fmt.Printf("  %s %s\n", SubtitleStyle.Render("Type:"), HighlightStyle.Render("review"))
+		fmt.Printf("  %s %s\n", SubtitleStyle.Render("Target:"), HighlightStyle.Render(task.ReviewTarget))
+		fmt.Printf("  %s %d\n", SubtitleStyle.Render("Reviewers:"), task.ReviewerCount)
 	}
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Status:"), statusBadge)
 	fmt.Printf("  %s %s\n", SubtitleStyle.Render("Created:"), task.CreatedAt.Format("2006-01-02 15:04:05"))
@@ -135,9 +139,18 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 
-	// Worktrees
+	// Worktrees (skip for review tasks since they don't use worktrees)
 	var readyWorktrees []core.WorktreeInfo
-	if len(worktrees) > 0 {
+	if task.GetType() == core.TaskTypeReview {
+		// Review tasks don't use worktrees - show status hint instead
+		if task.Status == core.TaskStatusPending {
+			fmt.Println(SubtitleStyle.Render("  Status:"))
+			fmt.Println("    (pending - run 'autom8 implement' to start review)")
+		} else if task.Status == core.TaskStatusInProgress {
+			fmt.Println(SubtitleStyle.Render("  Status:"))
+			fmt.Println("    (review in progress...)")
+		}
+	} else if len(worktrees) > 0 {
 		fmt.Println(SubtitleStyle.Render("  Worktrees:"))
 		for _, wt := range worktrees {
 			var wtStatus string
@@ -188,6 +201,40 @@ func runDescribe(cmd *cobra.Command, args []string) error {
 			}
 		} else {
 			fmt.Println("    (could not generate comparison)")
+		}
+	}
+
+	// Show review results for completed review tasks
+	if task.GetType() == core.TaskTypeReview && task.Status == core.TaskStatusCompleted {
+		fmt.Println()
+		result, err := LoadReviewResult(task.ID)
+		if err == nil {
+			fmt.Println(SubtitleStyle.Render("  Review Results:"))
+			fmt.Printf("    %s %s\n", SubtitleStyle.Render("Completed:"), result.CompletedAt.Format("2006-01-02 15:04:05"))
+			fmt.Printf("    %s %d\n", SubtitleStyle.Render("Issues Found:"), len(result.Result.Issues))
+			if len(result.Result.Issues) > 0 {
+				fmt.Println()
+				for _, issue := range result.Result.Issues {
+					fmt.Printf("    [%s] %s\n", issue.Severity, issue.Title)
+					if issue.File != "" {
+						location := issue.File
+						if issue.Line > 0 {
+							location = fmt.Sprintf("%s:%d", issue.File, issue.Line)
+						}
+						fmt.Printf("      %s %s\n", SubtitleStyle.Render("Location:"), location)
+					}
+					if issue.Description != "" {
+						fmt.Printf("      %s\n", issue.Description)
+					}
+				}
+			}
+			if result.Result.Summary != "" {
+				fmt.Println()
+				fmt.Printf("    %s %s\n", SubtitleStyle.Render("Summary:"), result.Result.Summary)
+			}
+		} else {
+			fmt.Println(SubtitleStyle.Render("  Review Results:"))
+			fmt.Println("    (results not found)")
 		}
 	}
 

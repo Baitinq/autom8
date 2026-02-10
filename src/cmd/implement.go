@@ -267,10 +267,21 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Filter out tasks that are missing prompt or criteria
+	// Separate review tasks from implementation/investigation tasks
+	var reviewTasks []core.Task
+	var implTasks []core.Task
+	for _, task := range pendingTasks {
+		if task.GetType() == core.TaskTypeReview {
+			reviewTasks = append(reviewTasks, task)
+		} else {
+			implTasks = append(implTasks, task)
+		}
+	}
+
+	// Filter out implementation tasks that are missing prompt or criteria
 	var readyTasks []core.Task
 	var skippedTasks []core.Task
-	for _, task := range pendingTasks {
+	for _, task := range implTasks {
 		if strings.TrimSpace(task.Prompt) == "" || len(task.VerificationCriteria) == 0 {
 			skippedTasks = append(skippedTasks, task)
 		} else {
@@ -290,14 +301,14 @@ func runImplement(cmd *cobra.Command, args []string) error {
 			fmt.Printf("%s Skipping task '%s': %s. Use 'autom8 edit %s' to complete it.\n",
 				SubtitleStyle.Render("[skip]"), NameStyle.Render(task.ID), reason, task.ID)
 		}
-		if len(readyTasks) > 0 {
+		if len(readyTasks) > 0 || len(reviewTasks) > 0 {
 			fmt.Println()
 		}
 	}
 
 	pendingTasks = readyTasks
 
-	if len(pendingTasks) == 0 {
+	if len(pendingTasks) == 0 && len(reviewTasks) == 0 {
 		fmt.Println(SubtitleStyle.Render("No tasks ready to implement."))
 		return nil
 	}
@@ -340,35 +351,40 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	totalIndependent := len(independentTasks) * numInstances
 	totalDependent := len(dependentTasks) * numInstances * numInstances
 
-	fmt.Println(TitleStyle.Render("Starting Implementation"))
-	fmt.Println()
-	if addMode {
-		fmt.Printf("  %s adding %d more implementation(s)\n", SubtitleStyle.Render("Mode:"), numInstances)
-	} else {
-		fmt.Printf("  %s %d\n", SubtitleStyle.Render("Instances per task:"), numInstances)
+	// Only show implementation header if there are implementation tasks
+	if len(pendingTasks) > 0 {
+		fmt.Println(TitleStyle.Render("Starting Implementation"))
+		fmt.Println()
+		if addMode {
+			fmt.Printf("  %s adding %d more implementation(s)\n", SubtitleStyle.Render("Mode:"), numInstances)
+		} else {
+			fmt.Printf("  %s %d\n", SubtitleStyle.Render("Instances per task:"), numInstances)
+		}
+		fmt.Printf("  %s %d task(s) x %d = %d worktrees\n",
+			SubtitleStyle.Render("Independent:"), len(independentTasks), numInstances, totalIndependent)
+		if len(dependentTasks) > 0 {
+			fmt.Printf("  %s %d task(s) x %d^2 = %d worktrees (exponential)\n",
+				SubtitleStyle.Render("Dependent:"), len(dependentTasks), numInstances, totalDependent)
+		}
+		fmt.Println()
 	}
-	fmt.Printf("  %s %d task(s) x %d = %d worktrees\n",
-		SubtitleStyle.Render("Independent:"), len(independentTasks), numInstances, totalIndependent)
-	if len(dependentTasks) > 0 {
-		fmt.Printf("  %s %d task(s) x %d^2 = %d worktrees (exponential)\n",
-			SubtitleStyle.Render("Dependent:"), len(dependentTasks), numInstances, totalDependent)
-	}
-	fmt.Println()
 
-	// Mark all pending tasks as in-progress before starting
-	for i, t := range tasks {
-		for _, pt := range pendingTasks {
-			if t.ID == pt.ID {
-				if t.Status == core.TaskStatusPending {
-					tasks[i].Status = core.TaskStatusInProgress
+	// Mark all pending implementation tasks as in-progress before starting
+	if len(pendingTasks) > 0 {
+		for i, t := range tasks {
+			for _, pt := range pendingTasks {
+				if t.ID == pt.ID {
+					if t.Status == core.TaskStatusPending {
+						tasks[i].Status = core.TaskStatusInProgress
+					}
+					// For in-progress tasks, no change needed
+					break
 				}
-				// For in-progress tasks, no change needed
-				break
 			}
 		}
-	}
-	if err := core.SaveTasks(tasks); err != nil {
-		return fmt.Errorf("error updating task status: %w", err)
+		if err := core.SaveTasks(tasks); err != nil {
+			return fmt.Errorf("error updating task status: %w", err)
+		}
 	}
 
 	// Get the path to the current executable for spawning workers
@@ -433,9 +449,37 @@ func runImplement(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Print results
-	for _, result := range spawnedWorkers {
-		fmt.Println(result)
+	// Print results for implementation workers
+	if len(spawnedWorkers) > 0 {
+		for _, result := range spawnedWorkers {
+			fmt.Println(result)
+		}
+	}
+
+	// Handle review tasks (they don't use worktrees)
+	if len(reviewTasks) > 0 {
+		if len(spawnedWorkers) > 0 {
+			fmt.Println()
+		}
+		fmt.Println(TitleStyle.Render("Starting Reviews"))
+		fmt.Println()
+
+		// Mark review tasks as in-progress and spawn review workers
+		for i, t := range tasks {
+			for _, rt := range reviewTasks {
+				if t.ID == rt.ID && t.Status == core.TaskStatusPending {
+					tasks[i].Status = core.TaskStatusInProgress
+				}
+			}
+		}
+		if err := core.SaveTasks(tasks); err != nil {
+			return fmt.Errorf("error updating review task status: %w", err)
+		}
+
+		for _, task := range reviewTasks {
+			result := spawnReviewWorker(task, gitRoot, exePath)
+			fmt.Println(result)
+		}
 	}
 
 	fmt.Println()
@@ -695,4 +739,65 @@ func spawnWorkerForExistingWorktree(task core.Task, wt core.WorktreeInfo, worktr
 
 	pid := workerCmd.Process.Pid
 	return fmt.Sprintf("  %s %s (PID %d)", SuccessStyle.Render("[resumed]"), NameStyle.Render(worktreeName), pid)
+}
+
+// spawnReviewWorker spawns a detached worker subprocess for a review task.
+// Review tasks don't use worktrees - they run directly in the git root.
+func spawnReviewWorker(task core.Task, gitRoot, exePath string) string {
+	logsDir, _ := core.GetLogsDir()
+
+	// Create logs directory for this review task
+	taskLogsDir := filepath.Join(logsDir, task.ID)
+	if err := os.MkdirAll(taskLogsDir, 0755); err != nil {
+		return fmt.Sprintf("  %s %s: failed to create logs dir: %v", ErrorStyle.Render("[error]"), task.ID, err)
+	}
+
+	// Check if worker is already running
+	pidFile := filepath.Join(taskLogsDir, core.WorkerPidFile)
+	if pidData, err := os.ReadFile(pidFile); err == nil {
+		if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
+			if core.IsProcessRunning(pid) {
+				return fmt.Sprintf("  %s %s (worker already running, PID %d)", SubtitleStyle.Render("[skip]"), task.ID, pid)
+			}
+		}
+	}
+
+	// Clear any stale status file
+	statusPath := filepath.Join(taskLogsDir, core.WorktreeStatusFile)
+	os.Remove(statusPath) // Ignore errors
+
+	// Spawn a detached review worker subprocess
+	workerArgs := []string{
+		"_review-worker",
+		"--task-id", task.ID,
+	}
+
+	workerCmd := exec.Command(exePath, workerArgs...)
+	workerCmd.Dir = gitRoot
+
+	// Redirect stdout/stderr to log file
+	logFile := filepath.Join(taskLogsDir, workerLogFile)
+	logFd, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Sprintf("  %s %s: failed to create log file: %v", ErrorStyle.Render("[error]"), task.ID, err)
+	}
+	workerCmd.Stdout = logFd
+	workerCmd.Stderr = logFd
+
+	// Set up process attributes for detachment (setsid equivalent)
+	workerCmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true,
+	}
+
+	// Start the worker
+	if err := workerCmd.Start(); err != nil {
+		logFd.Close()
+		return fmt.Sprintf("  %s %s: failed to start worker: %v", ErrorStyle.Render("[error]"), task.ID, err)
+	}
+
+	// Close log file descriptor (worker has its own reference now)
+	logFd.Close()
+
+	pid := workerCmd.Process.Pid
+	return fmt.Sprintf("  %s %s (PID %d, %d reviewers)", SuccessStyle.Render("[spawned]"), task.ID, pid, task.ReviewerCount)
 }
