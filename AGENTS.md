@@ -62,7 +62,8 @@ autom8/
     ├── memory.md            # Persistent learnings from past tasks (commit this)
     └── internal/            # Ephemeral data (gitignored)
         ├── worktrees/       # Git worktree directories
-        └── logs/            # Per-worktree logs
+        ├── logs/            # Per-worktree logs
+        └── reviews/         # Review task results (transient)
 ```
 
 ## Core Concepts
@@ -85,7 +86,7 @@ autom8 supports three types of tasks:
 
 - **Implementation tasks** (default) - For building features, fixing bugs, or making code changes. Created with `autom8 new`. Agents focus on writing and committing code.
 - **Investigation tasks** - For understanding, debugging, or researching code. Created with `autom8 investigate`. Agents focus on exploration and write findings to `.autom8/investigations/<task-id>.md`.
-- **Review tasks** - For code review of PRs or branches. Created with `autom8 review`. Runs parallel reviewers and saves consolidated results to `.autom8/reviews/<task-id>.json`. View results with `autom8 describe <task-id>`.
+- **Review tasks** - For code review of PRs or branches. Created with `autom8 review`. Runs parallel reviewers and saves consolidated results to `.autom8/internal/reviews/<task-id>.json` (ephemeral). View results with `autom8 describe <task-id>`.
 
 ### Worktrees
 
@@ -134,7 +135,7 @@ For dependent tasks, worktrees branch from EACH instance of the parent task:
 | `autom8 show <worktree>` | Show diff between default branch and worktree |
 | `autom8 logs <worktree>` | Stream implementation/review logs for a worktree |
 | `autom8 chat <worktree>` | Interactive Claude session in worktree |
-| `autom8 review [PR#\|branch]` | Create a review task (async). Run `autom8 implement` to execute reviewers. Results in `.autom8/reviews/` |
+| `autom8 review [PR#\|branch]` | Create a review task (async). Run `autom8 implement` to execute reviewers. Results in `.autom8/internal/reviews/` |
 | `autom8 version` | Print the autom8 version |
 
 ### Flag Reference
@@ -181,7 +182,7 @@ When all worktrees for a task finish, auto-converge runs automatically to pick t
 - `-n <count>` - Number of parallel reviewers (default: 1)
 - `--name <name>` - Custom task name (auto-generated from target if not provided)
 
-Creates a review task and returns immediately. Run `autom8 implement` to execute the reviewers. Results are saved to `.autom8/reviews/<task-id>.json` and can be viewed with `autom8 describe <task-id>`. The reviewer tool defaults to `codex` (configurable via `.autom8/config.json`).
+Creates a review task and returns immediately. Run `autom8 implement` to execute the reviewers. Results are saved to `.autom8/internal/reviews/<task-id>.json` (ephemeral) and can be viewed with `autom8 describe <task-id>`. The reviewer tool defaults to `codex` (configurable via `.autom8/config.json`).
 
 ## Code Organization
 

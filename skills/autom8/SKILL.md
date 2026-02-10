@@ -228,7 +228,7 @@ autom8 review 123 --name pr-123-review
 The `review` command creates a **review task** and returns immediately (async). Run `autom8 implement` to execute the reviewers. Multiple reviewers analyze the changes in parallel, then results are consolidated into a deduplicated, severity-sorted list of issues.
 
 **Viewing results:**
-- Results are saved to `.autom8/reviews/<task-id>.json`
+- Results are saved to `.autom8/internal/reviews/<task-id>.json` (ephemeral, not committed)
 - Use `autom8 describe <task-id>` to view issues and their severity
 - Review tasks appear in `autom8 status` alongside implementation tasks
 

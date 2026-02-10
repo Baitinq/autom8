@@ -118,17 +118,18 @@ func EnsureInvestigationsDir() (string, error) {
 	return dir, nil
 }
 
-// GetReviewsDir returns the path to the reviews directory (.autom8/reviews/).
-// This directory stores output from review-type tasks.
+// GetReviewsDir returns the path to the reviews directory (.autom8/internal/reviews/).
+// This directory stores ephemeral output from review-type tasks.
 func GetReviewsDir() (string, error) {
 	autom8Dir, err := GetAutom8Dir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(autom8Dir, ReviewsDir), nil
+	return filepath.Join(autom8Dir, InternalDir, ReviewsDir), nil
 }
 
 // EnsureReviewsDir ensures the reviews directory exists and returns its path.
+// Reviews are stored in .autom8/internal/reviews/ as ephemeral data.
 func EnsureReviewsDir() (string, error) {
 	dir, err := GetReviewsDir()
 	if err != nil {
