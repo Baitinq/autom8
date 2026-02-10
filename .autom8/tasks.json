@@ -1,48 +1,103 @@
 [
   {
-    "id": "label-winner-in-status",
-    "prompt": "Modify the status command to visually distinguish the winning worktree after converge runs. When displaying worktrees in 'autom8 status', prefix the winning worktree name with a ★ star character. The Task struct already has a Winner field that stores the winning worktree name - use this to determine which worktree to label.",
+    "id": "add-version-cmd",
+    "type": "implementation",
+    "prompt": "Add a 'version' subcommand that prints the autom8 version. Use a VERSION variable that can be set at build time via -ldflags.",
     "verification_criteria": [
-      "Winning worktree is prefixed with ★ in status output",
-      "Non-winning worktrees display without the star",
-      "Works correctly when no winner has been selected yet (no star shown)",
-      "Star appears before the worktree name, after the status badge"
+      "Running 'autom8 version' prints the version string",
+      "Version can be overridden at build time with: go build -ldflags \"-X main.VERSION=1.0.0\""
     ],
-    "created_at": "2026-02-01T18:04:35.632914+01:00",
-    "status": "pending"
-  },
-  {
-    "id": "converge-show-reasoning",
-    "prompt": "Modify the converge subcommand to display a brief reasoning summary explaining why the winning implementation was chosen.\n\nChanges needed:\n1. In buildConvergePrompt(): Add instruction for the AI to output 'REASONING: \u003c1-2 sentence summary\u003e' in addition to 'WINNER: \u003cname\u003e'\n2. In parseConvergeResponse(): Extract both the winner name and the reasoning string. Change the return type or add a second return value for the reasoning.\n3. In runConverge(): Display the extracted reasoning after showing the winner, using appropriate styling.\n\nThe reasoning should appear in the output like:\n    [winner] my-task-1\n    [reason] This implementation correctly handles all edge cases and has cleaner code structure.",
-    "verification_criteria": [
-      "The converge output displays a 1-2 sentence reasoning for why the winner was chosen",
-      "The prompt in buildConvergePrompt instructs the AI to provide REASONING: \u003csummary\u003e",
-      "parseConvergeResponse extracts and returns both winner and reasoning",
-      "The reasoning is displayed with appropriate styling after the winner line"
-    ],
-    "created_at": "2026-02-01T18:05:55.638932+01:00",
-    "status": "pending"
-  },
-  {
-    "id": "fix-review-async-docs",
-    "prompt": "Harden review task creation and update docs for async review. Ensure auto-generated review task names are sanitized to task naming rules (alphanumeric, dash, underscore), validated, and cannot include invalid characters from review targets. Clamp reviewer count to at least 1 when creating review tasks. Update README.md, AGENTS.md (CLAUDE.md), and .claude/skills/autom8/SKILL.md to describe the async review flow, review task type, where results are stored, and how to view results (autom8 describe).",
-    "verification_criteria": [
-      "Auto-generated review task names always pass ValidateTaskName even with branch names containing special characters",
-      "reviewer count is normalized to \u003e=1 when creating review tasks",
-      "README.md, AGENTS.md, and .claude/skills/autom8/SKILL.md describe async review flow and viewing results"
-    ],
-    "created_at": "2026-02-10T10:48:45.111743+01:00",
+    "created_at": "2026-02-06T10:00:00Z",
     "status": "completed",
-    "winner": "fix-review-async-docs-1"
+    "winner": "add-version-cmd-3"
   },
   {
-    "id": "fix-review-count-display",
-    "prompt": "Use the normalized reviewer count when printing review task creation output so the displayed reviewer count matches the value stored in tasks.json (clamped to \u003e=1).",
+    "id": "add-json-output",
+    "type": "implementation",
+    "prompt": "Add a --json flag to the 'status' command that outputs task information as JSON instead of the styled table format.",
     "verification_criteria": [
-      "Review command prints normalized reviewer count (\u003e=1) in its output"
+      "Running 'autom8 status --json' outputs valid JSON",
+      "JSON includes all task fields: id, type, prompt, status, winner",
+      "Default behavior (no flag) remains unchanged"
     ],
-    "created_at": "2026-02-10T10:56:47.740599+01:00",
+    "created_at": "2026-02-06T10:05:00Z",
+    "status": "in-progress",
+    "winner": "add-json-output-1"
+  },
+  {
+    "id": "add-task-count",
+    "type": "implementation",
+    "prompt": "Add a summary line at the end of 'autom8 status' showing task counts: 'N pending, M in-progress, K completed'",
+    "verification_criteria": [
+      "Status output ends with a summary line showing counts",
+      "Summary updates correctly as tasks change status"
+    ],
+    "depends_on": "add-json-output",
+    "created_at": "2026-02-06T10:10:00Z",
+    "status": "in-progress",
+    "winner": "add-task-count-2-1"
+  },
+  {
+    "id": "add-hello-cmd",
+    "type": "implementation",
+    "prompt": "Add a 'hello' subcommand that prints 'Hello from autom8!' with a friendly wave emoji.",
+    "verification_criteria": [
+      "Running 'autom8 hello' prints 'Hello from autom8!' with a wave emoji",
+      "Command is registered in main.go init()"
+    ],
+    "created_at": "2026-02-06T10:15:00Z",
+    "status": "in-progress",
+    "winner": "add-hello-cmd-3"
+  },
+  {
+    "id": "improve-readme",
+    "prompt": "Improve the README.md to make it more clear, comprehensive, and user-friendly. Review the current content and enhance it with better structure, clearer explanations, more examples, and improved formatting.",
+    "verification_criteria": [
+      "README has clear installation instructions",
+      "README has usage examples for common workflows",
+      "README structure is logical and easy to navigate",
+      "README accurately reflects current CLI commands and features"
+    ],
+    "created_at": "2026-02-06T14:17:19.740802+01:00",
+    "status": "in-progress",
+    "winner": "improve-readme-1"
+  },
+  {
+    "id": "fix-review-json-parsing",
+    "prompt": "Simplify parseReviewOutput in src/cmd/review.go to find and parse any JSON object in the output, regardless of wrapping. Replace the current logic that looks for \u003coutput\u003eREVIEW: {...}\u003c/output\u003e tags with simpler logic that finds the first '{' and last '}' and tries to parse that as JSON. This handles all formats (raw JSON, REVIEW: {...}, \u003coutput\u003eREVIEW: {...}\u003c/output\u003e) with less code.",
+    "verification_criteria": [
+      "parseReviewOutput finds JSON by locating first '{' and last '}'",
+      "No longer requires \u003coutput\u003e tags or REVIEW: prefix",
+      "Fallback to summary still works if no valid JSON found"
+    ],
+    "created_at": "2026-02-10T10:13:33.679815+01:00",
     "status": "completed",
-    "winner": "fix-review-count-display-1"
+    "winner": "fix-review-json-parsing-1"
+  },
+  {
+    "id": "async-review",
+    "prompt": "Make the review command async like new/investigate commands.\n\nCurrently, 'autom8 review' is synchronous - it spawns reviewers, waits for completion, converges results, and prints output all in one blocking operation.\n\nChange it to work like 'new' and 'investigate':\n1. Add a new task type 'review' to core/task.go (like TaskTypeInvestigation)\n2. Store review target (PR#/branch) and reviewer count in the task\n3. 'autom8 review' should create a review task and return immediately\n4. 'autom8 implement' should detect review tasks and run the review logic\n5. Review results should be stored (e.g., in .autom8/reviews/\u003ctask-id\u003e.json)\n6. Add a way to view completed review results\n\nThe goal is consistency: all task-creating commands (new, investigate, review) should behave the same way - create a task and let 'implement' do the actual work.",
+    "verification_criteria": [
+      "Review command creates a task and returns immediately",
+      "Review tasks have type 'review' in tasks.json",
+      "autom8 implement runs reviews for review-type tasks",
+      "Review results are persisted to .autom8/reviews/",
+      "Can view completed review results"
+    ],
+    "created_at": "2026-02-10T10:33:07.964841+01:00",
+    "status": "completed",
+    "winner": "async-review-1"
+  },
+  {
+    "id": "ephemeral-reviews",
+    "prompt": "Move review results from .autom8/reviews/ to .autom8/internal/reviews/ so they are gitignored (ephemeral) rather than committed.\n\nChanges needed:\n1. In src/core/task.go: Change GetReviewsDir() and EnsureReviewsDir() to use internal/reviews/ path\n2. Update README.md and AGENTS.md to reflect that review results are ephemeral (in .autom8/internal/)\n3. Update skills/autom8/SKILL.md similarly\n\nReviews are transient analysis of a specific PR/branch at a point in time - once merged or abandoned, they're historical noise. Unlike investigations (which document understanding), reviews don't need to be preserved.",
+    "verification_criteria": [
+      "GetReviewsDir returns .autom8/internal/reviews/",
+      "Review results are gitignored",
+      "Docs updated to reflect ephemeral storage"
+    ],
+    "created_at": "2026-02-10T11:11:16.437505+01:00",
+    "status": "completed",
+    "winner": "ephemeral-reviews-1"
   }
 ]
