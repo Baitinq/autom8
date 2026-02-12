@@ -337,10 +337,14 @@ func runImplement(cmd *cobra.Command, args []string) error {
 	}
 
 	// Separate tasks with and without dependencies
+	// Tasks whose parent is completed are treated as independent (branch from main)
 	var independentTasks []core.Task
 	var dependentTasks []core.Task
 	for _, task := range pendingTasks {
 		if task.DependsOn == "" {
+			independentTasks = append(independentTasks, task)
+		} else if parentTask, ok := taskMap[task.DependsOn]; ok && parentTask.Status == core.TaskStatusCompleted {
+			// Parent task is completed, treat as independent
 			independentTasks = append(independentTasks, task)
 		} else {
 			dependentTasks = append(dependentTasks, task)
