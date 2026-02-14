@@ -4,15 +4,17 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    llm-agents.url = "github:numtide/llm-agents.nix";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, llm-agents }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
         };
+        llm = llm-agents.packages.${system};
       in
       {
         devShells.default = pkgs.mkShell {
@@ -20,8 +22,8 @@
             go
             gopls
             go-tools
-            claude-code
-            codex
+            llm.claude-code
+            llm.codex
           ];
         };
 
