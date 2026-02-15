@@ -112,6 +112,8 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if agentTemplate != "" {
 		promptBuilder.WriteString(agentTemplate)
 	}
+	// Inject worktree context so agents know where they are
+	promptBuilder.WriteString(fmt.Sprintf("\n## Working Directory\n\nYour working directory is an isolated git worktree at: %s\nThis is where you should make all code changes and run commands.\nDo NOT confuse this with the main repository — your worktree is your workspace.\n\n", workerWorktreePath))
 	// For investigation tasks, include the task ID so the agent knows the output path
 	if task.GetType() == core.TaskTypeInvestigation {
 		promptBuilder.WriteString(fmt.Sprintf("**Task ID:** %s\n\n", task.ID))
@@ -554,6 +556,8 @@ func buildReviewPrompt(task core.Task, worktreePath, baseBranch string) (string,
 
 	sb.WriteString(reviewerTemplate)
 	sb.WriteString("\n")
+	// Inject worktree context so reviewers know where they are
+	sb.WriteString(fmt.Sprintf("## Working Directory\n\nYour working directory is an isolated git worktree at: %s\nThis is where you should make all code changes and run commands.\nDo NOT confuse this with the main repository — your worktree is your workspace.\n\n", worktreePath))
 	// For investigation tasks, include the task ID
 	if task.GetType() == core.TaskTypeInvestigation {
 		sb.WriteString(fmt.Sprintf("**Task ID:** %s\n\n", task.ID))
