@@ -35,3 +35,10 @@
 5. when accepting, the worktree status is idle thats weird.
 6. import from todo/jira/beads
 7. review command
+8. init command (creates a memory.md?)
+9. review async  command (like investigation)
+10. autom8 works with gitless environments
+11. pr command should watch ci and fix in the background
+12. cost
+13. pr command should complete task maybe?
+14. implement with random models
