@@ -50,6 +50,9 @@ func init() {
 }
 
 func main() {
+	// Unset CLAUDECODE so child claude processes don't think they're nested sessions.
+	os.Unsetenv("CLAUDECODE")
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
